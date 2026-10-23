@@ -1,0 +1,30 @@
+{
+  "name": "outreach-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Daily work queue for manual cold DMs. Never sends anything itself.",
+  "type": "module",
+  "workspaces": [
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"node --watch server/index.js\" \"npm run dev -w client\"",
+    "demo": "concurrently -n api,web -c blue,green \"node --watch server/index.js --memory\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "node server/index.js",
+    "start:demo": "node server/index.js --memory",
+    "seed": "node server/seed.js",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "express": "^4.22.3",
+    "googleapis": "^188.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
