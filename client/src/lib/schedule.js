@@ -1,5 +1,5 @@
-import { addDays, daysBetween, isSameDay, startOfDay } from './dates.js';
-import { PROBLEM_PRIORITY } from './messages.js';
+import { addDays, daysBetween, isSameDay, startOfDay, ymd } from './dates.js';
+import { getStage, PROBLEM_PRIORITY } from './messages.js';
 
 export function parseConfig(c) {
   const cap = Math.max(1, parseInt(c.cap, 10) || 10);
@@ -85,8 +85,23 @@ export function buildToday(leads, log, cfg, now = new Date()) {
     .map((r) => ({ ...r, lead: byId.get(r.leadId) }))
     .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
 
+  // Everything still to do today vs. already sent: drives the progress ring.
+  const todo = {
+    replies: replies.filter((l) => getStage(l)?.sendable).length,
+    followups: followups.length,
+    newDMs: newDMs.length,
+  };
+  const left = todo.replies + todo.followups + todo.newDMs;
+  const sent = today.length;
+  const goal = sent + left;
+  const progress = {
+    sent, left, goal, todo,
+    pct: goal ? Math.round((sent / goal) * 100) : 0,
+    complete: sent > 0 && left === 0,
+  };
+
   return {
-    replies, followups, newDMs, sentToday, remaining,
+    replies, followups, newDMs, sentToday, remaining, progress,
     queuedTotal: queued.length,
     meters: {
       A: { used: newBy.A, cap },
@@ -102,4 +117,24 @@ export function pipelineStats(leads) {
   const won = leads.filter((l) => l.status === 'won').length;
   const rate = contacted ? Math.round((replied / contacted) * 100) : 0;
   return { leads: leads.length, contacted, replied, rate, won };
+}
+
+/** Streak (consecutive days with a send; an empty today doesn't break it yet) and 7-day totals. */
+export function weekStats(leads, log, now = new Date()) {
+  const sends = netSends(log);
+  const days = new Set(sends.map((r) => ymd(new Date(r.timestamp))));
+  let streak = 0;
+  let d = new Date(now);
+  if (!days.has(ymd(d))) d = addDays(d, -1);
+  while (days.has(ymd(d))) {
+    streak++;
+    d = addDays(d, -1);
+  }
+  const weekStart = addDays(startOfDay(now), -6);
+  return {
+    streak,
+    sent: sends.filter((r) => new Date(r.timestamp) >= weekStart).length,
+    replies: leads.filter((l) => l.repliedAt && new Date(l.repliedAt) >= weekStart).length,
+    won: leads.filter((l) => l.status === 'won').length,
+  };
 }

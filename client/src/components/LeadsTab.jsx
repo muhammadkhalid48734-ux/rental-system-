@@ -31,8 +31,8 @@ export default function LeadsTab({ leads, env, onAdd, onImport }) {
         <div className="stat"><b>{stats.leads}</b><span>Leads</span></div>
         <div className="stat"><b>{stats.contacted}</b><span>Contacted</span></div>
         <div className="stat"><b>{stats.replied}</b><span>Replied</span></div>
-        <div className="stat"><b>{stats.rate}%</b><span>Reply rate</span></div>
-        <div className="stat"><b>{stats.won}</b><span>Won</span></div>
+        <div className="stat hi"><b>{stats.rate}%</b><span>Reply rate</span></div>
+        <div className="stat hi"><b>{stats.won}</b><span>Won</span></div>
       </div>
 
       <div className="toolbar">
@@ -65,7 +65,7 @@ export default function LeadsTab({ leads, env, onAdd, onImport }) {
                   <div className="badges">
                     <span className={`badge prob-${lead.problem}`}>{PROBLEMS[lead.problem]}</span>
                     {lead.account && <span className={`badge acc-${lead.account}`}>{lead.account}</span>}
-                    <span className="badge mono">{lead.status}{lead.step ? ` ${lead.step}/4` : ''}</span>
+                    <span className={`badge mono st-${lead.status}`}>{lead.status}{lead.step ? ` ${lead.step}/4` : ''}</span>
                   </div>
                 </button>
                 {open && <LeadCard lead={lead} env={env} />}

@@ -73,6 +73,16 @@ export default function LeadCard({ lead, env, defaultAccount }) {
     setDraft(dkey ? drafts.get(dkey) : null);
   }
   const text = draft ?? generated;
+
+  // Brief "Copied ✓" feedback on the button that was pressed.
+  const [flashKey, setFlashKey] = useState(null);
+  const flashTimer = useRef(null);
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
+  const flash = (k) => {
+    setFlashKey(k);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashKey(null), 1600);
+  };
   const edited = draft !== null && draft !== generated;
 
   const onType = (v) => {
@@ -102,7 +112,10 @@ export default function LeadCard({ lead, env, defaultAccount }) {
   };
 
   const copy = () => {
-    copyText(text).then((ok) => actions.toast(ok ? 'Copied to clipboard' : 'Copy failed. Select the text and copy manually.', ok ? {} : { kind: 'bad' }));
+    copyText(text).then((ok) => {
+      if (ok) flash('copy');
+      else actions.toast('Copy failed. Select the text and copy manually.', { kind: 'bad' });
+    });
   };
   const copyOpen = (ch) => () => {
     // Runs inside the <a> click, so the copy happens in the same user gesture that opens the tab.
@@ -117,10 +130,11 @@ export default function LeadCard({ lead, env, defaultAccount }) {
     setChannel('email');
     copyText(toEmailText(stage, eff, cfg, text)).then((ok) => {
       if (!ok) return actions.toast('Copy failed. Select the text and copy manually.', { kind: 'bad' });
+      flash('email');
       if (!String(cfg.address || '').trim()) {
         return actions.toast('Copied, but your postal address is empty. Add it in Settings before sending marketing email.', { kind: 'warn', ms: 6000 });
       }
-      return actions.toast('Copied as email');
+      return undefined;
     });
   };
 
@@ -159,9 +173,15 @@ export default function LeadCard({ lead, env, defaultAccount }) {
         <div>
           <h3 className="biz">{lead.name}</h3>
           {sub && <div className="sub">{sub}</div>}
-          <div className="step">
-            {stage ? stage.label : `Status: ${lead.status}`}
-            {lead.step > 0 && lead.status === 'active' ? ` · ${lead.step}/4 sent` : ''}
+          <div className="stepline">
+            {lead.status !== 'replied' && ['queued', 'active', 'done'].includes(lead.status) && (
+              <span className="pips" role="img" aria-label={`${lead.step} of 4 messages sent`}>
+                {[0, 1, 2, 3].map((i) => (
+                  <i key={i} className={`pip ${i < lead.step ? 'on' : i === lead.step && lead.status !== 'done' ? 'next' : ''}`} />
+                ))}
+              </span>
+            )}
+            <span className="step">{stage ? stage.label : `Status: ${lead.status}`}</span>
           </div>
         </div>
         <div className="badges">
@@ -254,24 +274,36 @@ export default function LeadCard({ lead, env, defaultAccount }) {
             <p className="hint warn">The message still contains [placeholder] text. Fix it above or in Settings before sending.</p>
           )}
 
+          <ol className="flow" aria-label="Steps">
+            <li><i>1</i>Copy + open</li>
+            <li><i>2</i>Paste and send it yourself</li>
+            <li><i>3</i>Mark sent</li>
+          </ol>
+
           <div className="actions">
             {lead.ig && (
-              <a className="btn primary" href={lead.ig} target="_blank" rel="noopener noreferrer" onClick={copyOpen('ig')}>
+              <a className="btn primary cta" href={lead.ig} target="_blank" rel="noopener noreferrer" onClick={copyOpen('ig')}>
                 Copy + open Instagram
               </a>
             )}
             {lead.fb && (
-              <a className="btn primary" href={lead.fb} target="_blank" rel="noopener noreferrer" onClick={copyOpen('fb')}>
+              <a className="btn primary cta" href={lead.fb} target="_blank" rel="noopener noreferrer" onClick={copyOpen('fb')}>
                 Copy + open Facebook
               </a>
             )}
-            <button className="btn" onClick={copy}>Copy</button>
-            <button className="btn" onClick={copyEmail}>Copy as email</button>
+          </div>
+          <div className="secondary-actions">
+            <button className={`btn ${flashKey === 'copy' ? 'flash' : lead.ig || lead.fb ? '' : 'primary'}`} onClick={copy}>
+              {flashKey === 'copy' ? 'Copied ✓' : 'Copy'}
+            </button>
+            <button className={`btn ${flashKey === 'email' ? 'flash' : ''}`} onClick={copyEmail}>
+              {flashKey === 'email' ? 'Copied ✓' : 'Copy as email'}
+            </button>
           </div>
           {lead.email && <div className="hint">Email: <span className="mono">{lead.email}</span></div>}
 
           <div className="actions">
-            <button className="btn ok" disabled={!!blocked || busy} onClick={() => send(channel)}>Mark sent</button>
+            <button className="btn ok big" disabled={!!blocked || busy} onClick={() => send(channel)}>Mark sent</button>
             <label className="actions" style={{ gap: 6 }}>
               <span className="hint">via</span>
               <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Channel used" style={{ width: 'auto', minHeight: 38 }}>

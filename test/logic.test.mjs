@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMessage, getStage, applySend, quickReplies, toEmailText } from '../client/src/lib/messages.js';
-import { buildToday, parseConfig, dueInfo, netSends } from '../client/src/lib/schedule.js';
+import { buildToday, parseConfig, dueInfo, netSends, weekStats } from '../client/src/lib/schedule.js';
 import { parsePaste, cleanUrl, guessProblem } from '../client/src/lib/importer.js';
 
 const cfg = parseConfig({ cap: '10', gaps: '2,3,4', setupPrice: '$199', monthlyPrice: '$29' });
@@ -165,4 +165,22 @@ test('quick replies and email format', () => {
   assert.match(em, /^Subject: A free website demo for Bounce Co\n\nBody/);
   assert.match(em, /Alex\nPixel Co\n1 Main St/);
   assert.match(em, /unsubscribe/);
+});
+
+test('progress ring numbers and streak', () => {
+  const queued = Array.from({ length: 4 }, (_, i) => lead({ id: `p${i}`, order: i + 1 }));
+  const at = (dayOffset, h, leadId = 'z') => ({ timestamp: new Date(2026, 9, 23 + dayOffset, h).toISOString(), leadId, account: 'A', track: 'cold', step: 0, channel: 'ig' });
+  let t = buildToday(queued, [], cfg, NOW);
+  assert.deepEqual([t.progress.sent, t.progress.left, t.progress.goal, t.progress.pct, t.progress.complete], [0, 4, 4, 0, false]);
+  t = buildToday(queued.slice(1), [at(0, 9, 'p0')], cfg, NOW);
+  assert.deepEqual([t.progress.sent, t.progress.left, t.progress.pct, t.progress.complete], [1, 3, 25, false]);
+  t = buildToday([], [at(0, 9)], cfg, NOW);
+  assert.equal(t.progress.complete, true);
+  assert.equal(buildToday([], [], cfg, NOW).progress.complete, false);
+
+  const log = [at(-2, 9), at(-1, 9), at(-1, 10)];
+  assert.equal(weekStats([], log, NOW).streak, 2); // today empty doesn't break it
+  assert.equal(weekStats([], [...log, at(0, 8)], NOW).streak, 3);
+  assert.equal(weekStats([], [at(-3, 9)], NOW).streak, 0);
+  assert.equal(weekStats([], [at(-9, 9), at(-1, 9)], NOW).sent, 1);
 });

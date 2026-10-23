@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.js';
 import { drafts } from './lib/clipboard.js';
 import { applySend } from './lib/messages.js';
-import { buildToday, parseConfig } from './lib/schedule.js';
+import { buildToday, parseConfig, weekStats } from './lib/schedule.js';
 import Header from './components/Header.jsx';
 import Today from './components/Today.jsx';
 import LeadsTab from './components/LeadsTab.jsx';
 import QuickReplies from './components/QuickReplies.jsx';
 import Settings from './components/Settings.jsx';
 import Toasts from './components/Toast.jsx';
+import { Confetti } from './components/Hero.jsx';
 import { ImportDialog, LeadDialog } from './components/Dialogs.jsx';
 
 const UNDO_MS = 8000;
@@ -34,11 +35,17 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [dialog, setDialog] = useState(null);
+  const [burst, setBurst] = useState(0);
+  const wasComplete = useRef(null);
   const lastLoad = useRef(0);
   const loadSeq = useRef(0);
   const toastId = useRef(0);
 
-  const setTab = (t) => { setTabState(t); store.set('tab', t); };
+  const setTab = (t) => {
+    setTabState(t);
+    store.set('tab', t);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
 
   useEffect(() => {
     const root = document.documentElement;
@@ -100,6 +107,14 @@ export default function App() {
   const cfg = useMemo(() => parseConfig(data.config || {}), [data.config]);
   const now = data.loadedAt;
   const today = useMemo(() => buildToday(data.leads, data.log, cfg, now), [data.leads, data.log, cfg, now]);
+  const week = useMemo(() => weekStats(data.leads, data.log, now), [data.leads, data.log, now]);
+
+  // Celebrate the moment today's list goes from "something left" to "all done" (not on first load).
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    if (wasComplete.current === false && today.progress.complete) setBurst((b) => b + 1);
+    wasComplete.current = today.progress.complete;
+  }, [phase, today.progress.complete]);
 
   const actions = {
     toast,
@@ -123,7 +138,8 @@ export default function App() {
       }
       drafts.clearLead(lead.id);
 
-      toast(`Marked sent: ${lead.name}`, {
+      toast(`Sent ✓ ${lead.name} · ${today.progress.sent + 1} done today`, {
+        kind: 'good',
         ms: UNDO_MS,
         action: {
           label: 'Undo',
@@ -174,7 +190,17 @@ export default function App() {
   };
 
   if (phase === 'loading') {
-    return <div className="fatal"><h1>Outreach Desk</h1><p className="muted">Loading from Google Sheets…</p></div>;
+    return (
+      <div className="fatal" aria-busy="true" aria-label="Loading">
+        <h1>Outreach Desk</h1>
+        <div className="skeleton">
+          <div className="sk" style={{ height: 150 }} />
+          <div className="sk" style={{ height: 220 }} />
+          <div className="sk" style={{ height: 220 }} />
+        </div>
+        <p className="hint">Loading from Google Sheets…</p>
+      </div>
+    );
   }
   if (phase === 'error') {
     return (
@@ -195,7 +221,7 @@ export default function App() {
         theme={theme} cycleTheme={cycleTheme} onRefresh={load} busy={busy}
       />
       <main className="wrap" id="panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'today' && <Today today={today} env={env} leadCount={data.leads.length} />}
+        {tab === 'today' && <Today today={today} week={week} now={now} env={env} leadCount={data.leads.length} />}
         {tab === 'leads' && (
           <LeadsTab
             leads={data.leads} env={env}
@@ -223,6 +249,7 @@ export default function App() {
           onClose={() => setDialog(null)}
         />
       )}
+      <Confetti burst={burst} />
       <Toasts toasts={toasts} dismiss={dismiss} />
     </>
   );

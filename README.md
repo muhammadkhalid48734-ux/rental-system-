@@ -112,7 +112,7 @@ You can edit any message in its textarea before copying. Edits are kept until yo
 
 ## API
 
-`GET/POST /api/leads`, `PATCH/DELETE /api/leads/:id`, `GET/PUT /api/config`, `POST /api/log`, plus `GET /api/log` (last 3 days; the browser needs it to count today's sends). `POST /api/leads` accepts a single lead, an array, or `{ "leads": [...] }`.
+`GET/POST /api/leads`, `PATCH/DELETE /api/leads/:id`, `GET/PUT /api/config`, `POST /api/log`, plus `GET /api/log` (last 14 days; the browser needs it for today's counts, the streak and weekly stats). `POST /api/leads` accepts a single lead, an array, or `{ "leads": [...] }`.
 
 The frontend reads once on load and after every write. It does not poll. The only other reads are the Refresh button and a reload when you return to the tab after at least a minute (skipped while you are typing).
 

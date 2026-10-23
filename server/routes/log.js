@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { cleanLogEntry, rowToLog } from '../schema.js';
 import { ah } from '../util.js';
 
-const WINDOW_MS = 3 * 24 * 3600 * 1000; // enough for "today" plus undo/timezone slack
+const WINDOW_MS = 14 * 24 * 3600 * 1000; // today's counts, undo slack, plus the streak and 7-day stats
 
 export function logRouter(store, lock) {
   const r = Router();

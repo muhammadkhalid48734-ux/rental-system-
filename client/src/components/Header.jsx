@@ -27,9 +27,14 @@ export default function Header({ now, meters, cfg, tab, setTab, theme, cycleThem
     <header className="site-header">
       <div className="wrap">
         <div className="head-row">
-          <div>
-            <h1>Outreach Desk</h1>
-            <div className="head-date mono">{fmtLongDate(now)}</div>
+          <div className="brand">
+            <span className="logo" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+            </span>
+            <div>
+              <h1>Outreach Desk</h1>
+              <div className="head-date mono">{fmtLongDate(now)}</div>
+            </div>
           </div>
           <div className="head-tools">
             <button className="btn small" onClick={onRefresh} disabled={busy} aria-label="Refresh from Google Sheets">Refresh</button>
