@@ -35,37 +35,3 @@ export function leadsToCsv(leads) {
   for (const l of leads) lines.push(CSV_COLS.map((c) => cell(l[c])).join(','));
   return lines.join('\n');
 }
-
-// Drafts: edits to a message are kept (per lead + message stage) until it is sent.
-const KEY = 'outreach-desk:drafts';
-const read = () => {
-  try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
-};
-const write = (d) => {
-  try { localStorage.setItem(KEY, JSON.stringify(d)); } catch { /* storage unavailable */ }
-};
-const mem = {};
-
-export const drafts = {
-  get(k) {
-    return k in mem ? mem[k] : read()[k] ?? null;
-  },
-  set(k, v) {
-    mem[k] = v;
-    const d = read();
-    d[k] = v;
-    write(d);
-  },
-  clear(k) {
-    delete mem[k];
-    const d = read();
-    delete d[k];
-    write(d);
-  },
-  clearLead(id) {
-    const d = read();
-    for (const k of Object.keys(d)) if (k.startsWith(`${id}:`)) delete d[k];
-    for (const k of Object.keys(mem)) if (k.startsWith(`${id}:`)) delete mem[k];
-    write(d);
-  },
-};

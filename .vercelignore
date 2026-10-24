@@ -1,0 +1,9 @@
+.env
+.env.*
+credentials/
+secrets/
+*service-account*.json
+*-key.json
+node_modules
+test
+client/dist

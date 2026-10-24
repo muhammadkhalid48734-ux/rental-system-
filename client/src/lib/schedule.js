@@ -5,7 +5,7 @@ export function parseConfig(c) {
   const cap = Math.max(1, parseInt(c.cap, 10) || 10);
   let gaps = String(c.gaps || '2,3,4').split(',').map((s) => parseInt(s, 10)).filter((n) => n > 0);
   if (gaps.length < 3) gaps = [2, 3, 4];
-  return { ...c, cap, gaps, autoMark: String(c.autoMark) === 'true' };
+  return { ...c, cap, gaps };
 }
 
 /** When the next message is due for an active lead (day granularity), else null. */

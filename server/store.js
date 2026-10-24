@@ -1,8 +1,9 @@
 import path from 'node:path';
-import { google } from 'googleapis';
-import { LEAD_COLS, LOG_COLS, CONFIG_DEFAULTS } from './schema.js';
+import { auth as googleAuth, sheets as sheetsClient } from '@googleapis/sheets';
+import { LEAD_COLS, LOG_COLS, MESSAGE_COLS, CONFIG_DEFAULTS } from './schema.js';
+import { isProduction } from './env.js';
 
-const TABS = { Leads: LEAD_COLS, Log: LOG_COLS, Config: ['key', 'value'] };
+const TABS = { Leads: LEAD_COLS, Log: LOG_COLS, Messages: MESSAGE_COLS, Config: ['key', 'value'] };
 
 function colLetter(n) {
   let s = '';
@@ -22,12 +23,31 @@ const pad = (row, n) => Array.from({ length: n }, (_, i) => row[i] ?? '');
  *   init(), getRows(tab), appendRows(tab, rows), updateRow(tab, i, row), deleteRow(tab, i), replaceAll(tab, rows)
  */
 
-export function googleStore({ spreadsheetId, keyFile }) {
-  const auth = new google.auth.GoogleAuth({
-    keyFile: path.resolve(keyFile),
+/**
+ * GOOGLE_SERVICE_ACCOUNT_JSON is either the full JSON key as a string (production) or a file path (local).
+ */
+export function loadCredentials(raw) {
+  const v = String(raw || '').trim();
+  if (v.startsWith('{')) {
+    let credentials;
+    try {
+      credentials = JSON.parse(v);
+    } catch {
+      throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON starts with "{" but is not valid JSON. Paste the whole key file contents on one line.');
+    }
+    // Some env UIs store the private key with literal "\n" sequences.
+    if (typeof credentials.private_key === 'string') credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+    return { credentials };
+  }
+  return { keyFile: path.resolve(v) };
+}
+
+export function googleStore({ spreadsheetId, serviceAccount }) {
+  const auth = new googleAuth.GoogleAuth({
+    ...loadCredentials(serviceAccount),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
-  const sheets = google.sheets({ version: 'v4', auth });
+  const sheets = sheetsClient({ version: 'v4', auth });
   const sheetIds = {};
   const width = (tab) => TABS[tab].length;
   const last = (tab) => colLetter(width(tab));
@@ -107,7 +127,7 @@ export function googleStore({ spreadsheetId, keyFile }) {
 
 // In-memory store for demos and tests. Nothing is persisted.
 export function memoryStore() {
-  const data = { Leads: [], Log: [], Config: [] };
+  const data = { Leads: [], Log: [], Messages: [], Config: [] };
   return {
     kind: 'memory',
     async init() {
@@ -131,15 +151,29 @@ export function memoryStore() {
   };
 }
 
-export function createStore({ memory = false } = {}) {
-  if (memory || process.env.STORAGE === 'memory') return memoryStore();
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!spreadsheetId || !keyFile) {
+export function createStore({ memory = false, env = process.env } = {}) {
+  if (memory || env.STORAGE === 'memory') {
+    if (isProduction(env)) throw new Error('In-memory demo storage is not allowed in production. Configure Google Sheets.');
+    return memoryStore();
+  }
+  const spreadsheetId = env.GOOGLE_SHEET_ID;
+  const serviceAccount = env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!spreadsheetId || !serviceAccount) {
     throw new Error(
-      'Missing GOOGLE_SHEET_ID or GOOGLE_SERVICE_ACCOUNT_JSON in .env (see README.md). ' +
-      'To try the app without Google Sheets run: npm run demo',
+      'Missing GOOGLE_SHEET_ID or GOOGLE_SERVICE_ACCOUNT_JSON (see README.md). ' +
+      'To try the app locally without Google Sheets run: npm run demo',
     );
   }
-  return googleStore({ spreadsheetId, keyFile });
+  return googleStore({ spreadsheetId, serviceAccount });
+}
+
+/** Wraps a store so init() runs once, on first use, instead of at startup. */
+export function lazyInit(store) {
+  let ready;
+  const ensure = () => (ready ??= store.init().catch((err) => { ready = undefined; throw err; }));
+  const wrapped = { kind: store.kind, init: ensure };
+  for (const m of ['getRows', 'appendRows', 'updateRow', 'deleteRow', 'replaceAll']) {
+    wrapped[m] = async (...args) => { await ensure(); return store[m](...args); };
+  }
+  return wrapped;
 }

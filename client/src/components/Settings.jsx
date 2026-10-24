@@ -13,14 +13,6 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Pricing',
-    note: 'Used in the demo message and the quick replies.',
-    fields: [
-      ['setupPrice', 'Setup price', 'text', '$199'],
-      ['monthlyPrice', 'Monthly price', 'text', '$29'],
-    ],
-  },
-  {
     title: 'Your details',
     note: 'Used in email footers. A postal address and unsubscribe line are expected on marketing email.',
     fields: [
@@ -31,7 +23,9 @@ const GROUPS = [
   },
 ];
 
-export default function Settings({ config, leads, onSave, toast }) {
+const PACKAGES = [1, 2, 3];
+
+export default function Settings({ config, leads, onSave, toast, session, onLogout }) {
   const [form, setForm] = useState({ ...config });
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? String(e.target.checked) : e.target.value }));
@@ -73,24 +67,56 @@ export default function Settings({ config, leads, onSave, toast }) {
           </div>
         ))}
 
-        <div className="card">
-          <div className="group-title"><h3>Behavior</h3></div>
-          <label className="check">
-            <input type="checkbox" checked={form.autoMark === 'true'} onChange={set('autoMark')} />
-            <span>
-              Auto-mark as sent when I click “Copy + open Instagram/Facebook”
-              <span className="hint" style={{ display: 'block', fontWeight: 400 }}>
-                Off by default. If it is on, the lead moves on the moment you click, whether or not you actually sent the DM. You can still undo for 8 seconds.
-              </span>
-            </span>
-          </label>
+        <div className="group-title">
+          <h3>Demo packages</h3>
+          <p className="hint">
+            Shown together with their setup and monthly price in the demo message. Leave monthly empty for a one-time price (the message then says “no monthly fee”).
+            These are the only prices the app ever writes.
+          </p>
         </div>
+        {PACKAGES.map((n) => (
+          <div className="card" key={n}>
+            <div className="group-title">
+              <h3>Package {n}{n === 2 ? ' · Recommended' : ''}</h3>
+              {n === 2 && <p className="hint">Labelled “Recommended” in the demo message.</p>}
+            </div>
+            <div className="form-grid">
+              <label className="field wide">
+                <span>Name</span>
+                <input type="text" value={form[`pkg${n}Name`] ?? ''} onChange={set(`pkg${n}Name`)} />
+              </label>
+              <label className="field">
+                <span>Setup price (USD)</span>
+                <input type="text" inputMode="decimal" value={form[`pkg${n}Setup`] ?? ''} onChange={set(`pkg${n}Setup`)} placeholder="247" />
+              </label>
+              <label className="field">
+                <span>Monthly price (USD, optional)</span>
+                <input type="text" inputMode="decimal" value={form[`pkg${n}Monthly`] ?? ''} onChange={set(`pkg${n}Monthly`)} placeholder="none" />
+              </label>
+              <label className="field wide">
+                <span>What's included (one line)</span>
+                <textarea rows={3} maxLength={400} value={form[`pkg${n}Note`] ?? ''} onChange={set(`pkg${n}Note`)} />
+              </label>
+            </div>
+          </div>
+        ))}
 
         <div className="savebar">
           <span className="hint">{dirty ? 'You have unsaved changes.' : 'All changes saved.'}</span>
           <button className="btn primary" type="submit" disabled={saving || !dirty}>{saving ? 'Saving…' : 'Save settings'}</button>
         </div>
       </form>
+
+      <div className="card">
+        <div className="group-title">
+          <h3>AI personalization</h3>
+          {session.llm.configured ? (
+            <p className="hint">On. Messages are written by Groq (<span className="mono">{session.llm.model}</span>). Only lead data (business name, owner's first name, city, problem, note, hook) and your earlier messages to that lead are sent; free-tier providers may use prompts to improve their service.</p>
+          ) : (
+            <p className="hint warn">Off. Add your Groq API key to the server's environment settings (see the README) to turn on Regenerate and “Generate all”. The app keeps working with the built-in templates.</p>
+          )}
+        </div>
+      </div>
 
       <div className="card">
         <div className="group-title">
@@ -101,6 +127,13 @@ export default function Settings({ config, leads, onSave, toast }) {
           <button className="btn" onClick={exportCsv}>Copy all leads as CSV</button>
         </div>
       </div>
+
+      {session.authRequired && (
+        <div className="card">
+          <div className="group-title"><h3>Session</h3></div>
+          <div className="actions"><button className="btn" onClick={onLogout}>Log out</button></div>
+        </div>
+      )}
     </>
   );
 }

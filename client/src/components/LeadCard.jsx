@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { copyText, drafts } from '../lib/clipboard.js';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { copyText } from '../lib/clipboard.js';
+import { EMPTY, genCache } from '../lib/genCache.js';
+import { cacheKey, errorMessage, goTo, requestVariant, stashEdit, view } from '../lib/gen.js';
 import { fmtShortDate } from '../lib/dates.js';
 import { buildMessage, getStage, hasLink, hasPlaceholder, PROBLEMS, toEmailText } from '../lib/messages.js';
 import { dueInfo } from '../lib/schedule.js';
@@ -63,16 +65,17 @@ export default function LeadCard({ lead, env, defaultAccount }) {
   const avail = [lead.ig && 'ig', lead.fb && 'fb', lead.email && 'email'].filter(Boolean);
   const [channel, setChannel] = useState(avail[0] || 'ig');
 
-  // Edits to the message survive reloads and tab switches until the message is sent.
-  const dkey = stage ? `${lead.id}:${stage.key}${stage.key === 'demo' ? `:${eff.demoLink}` : ''}` : null;
-  const generated = showMessage ? buildMessage(stage, eff, cfg) : '';
-  const [draft, setDraft] = useState(() => (dkey ? drafts.get(dkey) : null));
-  const lastKey = useRef(dkey);
-  if (lastKey.current !== dkey) {
-    lastKey.current = dkey;
-    setDraft(dkey ? drafts.get(dkey) : null);
-  }
-  const text = draft ?? generated;
+  // Versions, the version on screen, and unsent edits live in the generation cache (per lead + step),
+  // so they survive reloads and tab switches until the message is sent.
+  const gkey = stage ? cacheKey(eff, stage) : null;
+  const entry = useSyncExternalStore(genCache.subscribe, () => (gkey ? genCache.get(gkey) : EMPTY), () => EMPTY);
+  const template = showMessage ? buildMessage(stage, eff, cfg) : '';
+  const v = view(entry, template);
+  const text = v.text;
+  const edited = v.edited;
+
+  const onType = (val) => genCache.update(gkey, (c) => ({ ...c, draft: val }));
+  const resetText = () => genCache.update(gkey, (c) => ({ ...c, draft: null }));
 
   // Brief "Copied ✓" feedback on the button that was pressed.
   const [flashKey, setFlashKey] = useState(null);
@@ -83,15 +86,38 @@ export default function LeadCard({ lead, env, defaultAccount }) {
     clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setFlashKey(null), 1600);
   };
-  const edited = draft !== null && draft !== generated;
 
-  const onType = (v) => {
-    setDraft(v);
-    drafts.set(dkey, v);
+  // Regenerate / version navigation. Replacing edited text always needs an in-page confirmation.
+  const [hint, setHint] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  useEffect(() => { setConfirm(null); }, [gkey]);
+
+  const runRegenerate = async () => {
+    setConfirm(null);
+    stashEdit(gkey, template);
+    setGenerating(true);
+    try {
+      const res = await requestVariant({ lead: eff, stage, hint: hint.trim(), template });
+      if (res.source === 'template') {
+        actions.toast('The AI draft did not pass the safety checks, so the template is shown. Try Regenerate again.', { kind: 'warn', ms: 6000 });
+      }
+    } catch (err) {
+      actions.toast(errorMessage(err), { kind: 'bad', ms: 6000 });
+    } finally {
+      setGenerating(false);
+    }
   };
-  const resetText = () => {
-    setDraft(null);
-    drafts.clear(dkey);
+  const onRegenerate = () => (edited ? setConfirm({ type: 'regen' }) : runRegenerate());
+  const onGoto = (target) => (edited ? setConfirm({ type: 'goto', target }) : goTo(gkey, template, target));
+  const confirmReplace = () => {
+    if (confirm.type === 'regen') {
+      runRegenerate();
+    } else {
+      stashEdit(gkey, template);
+      goTo(gkey, template, confirm.target);
+      setConfirm(null);
+    }
   };
 
   const needsCheck = lead.problem === 'down' || lead.problem === 'parked';
@@ -108,7 +134,7 @@ export default function LeadCard({ lead, env, defaultAccount }) {
       actions.toast(blocked, { kind: 'warn', ms: 5000 });
       return;
     }
-    actions.send(lead, stage, account, ch, eff.demoLink);
+    actions.send(lead, stage, account, ch, eff.demoLink, text);
   };
 
   const copy = () => {
@@ -123,8 +149,7 @@ export default function LeadCard({ lead, env, defaultAccount }) {
     copyText(text).then((ok) => {
       if (!ok) actions.toast('Copy failed. Select the text and copy manually.', { kind: 'bad' });
     });
-    if (cfg.autoMark) send(ch);
-    else actions.toast(`Copied. Paste it into ${ch === 'ig' ? 'Instagram' : 'Facebook'}, send it, then press Mark sent.`);
+    actions.toast(`Copied. Paste it into ${ch === 'ig' ? 'Instagram' : 'Facebook'}, send it, then press Mark sent.`);
   };
   const copyEmail = () => {
     setChannel('email');
@@ -253,14 +278,58 @@ export default function LeadCard({ lead, env, defaultAccount }) {
 
       {showMessage && (
         <>
+          <div className="genbar">
+            <span className={`badge ${v.shown.source === 'personalized' ? 'ok' : ''}`}>
+              {v.shown.source === 'personalized' ? 'Personalized' : 'Template'}
+            </span>
+            <div className="versions" role="group" aria-label="Previous versions">
+              <span className="label">Versions</span>
+              <button className="btn small icon" aria-label="Previous version" disabled={v.pos === 0 || generating} onClick={() => onGoto(v.pos - 1)}>◀</button>
+              <span className="mono" aria-live="polite">{v.pos + 1}/{v.all.length}</span>
+              <button className="btn small icon" aria-label="Next version" disabled={v.pos >= v.all.length - 1 || generating} onClick={() => onGoto(v.pos + 1)}>▶</button>
+            </div>
+            <span className="grow" />
+            <button className="btn small" onClick={onRegenerate} disabled={generating || !env.llm.configured}>
+              {generating ? <><span className="spinner" aria-hidden="true" />Writing…</> : 'Regenerate'}
+            </button>
+          </div>
+          <input
+            type="text"
+            className="hint-input"
+            placeholder={'Hint, e.g. "shorter" or "no phones"'}
+            aria-label="Hint for regenerating"
+            maxLength={200}
+            value={hint}
+            disabled={generating}
+            onChange={(e) => setHint(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && env.llm.configured && !generating) onRegenerate(); }}
+          />
+          {!env.llm.configured && (
+            <p className="hint">AI personalization is off, so this is the built-in template. See Settings to turn it on.</p>
+          )}
+          {!lead.hook && !lead.note && (
+            <p className="hint">The more specific your note, the more personal the message. Add a hook or note with Edit lead.</p>
+          )}
+          {confirm && (
+            <div className="notice warn" role="alertdialog" aria-label="Replace edited text?">
+              <p>You edited this message. Replace it on screen? Your edit is saved as its own version, so you can come back to it.</p>
+              <div className="actions" style={{ marginTop: 8 }}>
+                <button className="btn small" onClick={confirmReplace}>Replace</button>
+                <button className="btn small" onClick={() => setConfirm(null)}>Keep mine</button>
+              </div>
+            </div>
+          )}
+
           <label className="field">
             <span className="sr-only">Message to {lead.name}</span>
             <textarea
-              className="msg"
+              className={`msg ${generating ? 'busy' : ''}`}
               aria-label={`Message to ${lead.name}`}
+              aria-busy={generating}
               value={text}
               rows={Math.min(16, Math.max(7, Math.ceil(text.length / 52) + 2))}
               onChange={(e) => onType(e.target.value)}
+              readOnly={generating}
               spellCheck
             />
           </label>

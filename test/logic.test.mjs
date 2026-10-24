@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMessage, getStage, applySend, quickReplies, toEmailText } from '../client/src/lib/messages.js';
+import { buildMessage, getStage, applySend, quickReplies, toEmailText, packagesBlock, allowedAmounts } from '../client/src/lib/messages.js';
 import { buildToday, parseConfig, dueInfo, netSends, weekStats } from '../client/src/lib/schedule.js';
 import { parsePaste, cleanUrl, guessProblem } from '../client/src/lib/importer.js';
 
-const cfg = parseConfig({ cap: '10', gaps: '2,3,4', setupPrice: '$199', monthlyPrice: '$29' });
+import { CONFIG_DEFAULTS } from '../server/schema.js';
+const cfg = parseConfig({ ...CONFIG_DEFAULTS });
 const lead = (o = {}) => ({
   id: 'x', name: 'Bounce Co', city: '', owner: '', fb: '', ig: '', email: '', site: 'https://www.bounce.com/x?fbclid=1',
   problem: 'outdated', hook: '', note: '', status: 'queued', track: 'cold', step: 0, account: '', lastSentAt: '',
@@ -62,7 +63,11 @@ test('replied flow: permission -> wait -> demo -> nudges -> done', () => {
   assert.equal(getStage(l).key, 'demo');
   const demo = buildMessage(getStage(l), l, cfg);
   assert.match(demo, /only you have this link/i);
-  assert.match(demo, /\$199 setup \+ \$29\/month/);
+  assert.match(demo, /1\) Website: \$247 setup, no monthly fee/);
+  assert.match(demo, /2\) Website that books for you \(Recommended\): \$297 setup \+ \$33\/month/);
+  assert.match(demo, /3\) Book, pay & sign online: \$597 setup \+ \$79\/month/);
+  assert.doesNotMatch(demo, /most popular/i);
+  assert.match(demo, /Cancel anytime, no contract, and your website, domain and photos stay yours\./);
   assert.match(demo, /No hard feelings/);
   l = { ...l, ...applySend(l, getStage(l), 'A', daysAgo(0)) };
   assert.deepEqual([l.track, l.step, l.status], ['demo', 1, 'active']);
@@ -157,7 +162,7 @@ test('importer: dedupe, tracking params, email, problem guess', () => {
 });
 
 test('quick replies and email format', () => {
-  const where = quickReplies(parseConfig({ studio: 'Pixel Co' })).find((q) => q.title === 'Where are you based?');
+  const where = quickReplies(parseConfig({ ...CONFIG_DEFAULTS, studio: 'Pixel Co' })).find((q) => q.title === 'Where are you based?');
   assert.match(where.text, /Pakistan/);
   assert.match(where.text, /remote web design studio/);
   const l = lead();
@@ -183,4 +188,19 @@ test('progress ring numbers and streak', () => {
   assert.equal(weekStats([], [...log, at(0, 8)], NOW).streak, 3);
   assert.equal(weekStats([], [at(-3, 9)], NOW).streak, 0);
   assert.equal(weekStats([], [at(-9, 9), at(-1, 9)], NOW).sent, 1);
+});
+
+test('autoMark is gone from config and parsed settings', () => {
+  assert.equal('autoMark' in CONFIG_DEFAULTS, false);
+  assert.equal(parseConfig({ ...CONFIG_DEFAULTS }).autoMark, undefined);
+  assert.equal('setupPrice' in CONFIG_DEFAULTS, false);
+});
+
+test('demo packages: monthly may be empty, every package shows setup and monthly together', () => {
+  const c = { ...CONFIG_DEFAULTS, pkg2Monthly: '', pkg3Setup: '$600', pkg3Monthly: '$80' };
+  const block = packagesBlock(c);
+  assert.match(block, /2\) Website that books for you \(Recommended\): \$297 setup, no monthly fee/);
+  assert.match(block, /3\) Book, pay & sign online: \$600 setup \+ \$80\/month/);
+  for (const line of block.split('\n')) assert.match(line, /setup/);
+  assert.deepEqual([...allowedAmounts(c)].sort((a, b) => a - b), [80, 247, 297, 600]);
 });

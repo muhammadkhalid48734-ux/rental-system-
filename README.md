@@ -2,66 +2,102 @@
 
 A daily work queue for a one-person web design agency that sends **manual** cold DMs to US party and bounce-house rental businesses.
 
-**The app never sends anything.** For each lead it writes the message, copies it, opens the lead's profile, and records that *you* sent it. No DM scraping, no browser automation of Instagram or Facebook.
+**The app never sends anything.** For each lead it writes the message, copies it, opens the lead's profile, and records that *you* sent it after you press **Mark sent**. No DM scraping, no browser automation of Instagram or Facebook.
 
-- Backend: Node + Express, Google Sheets as the database (`googleapis`, service account)
-- Frontend: React (Vite), served on localhost
+- Backend: Node + Express. Runs as one Vercel serverless function in production, and as a normal local server for development.
+- Database: Google Sheets (`@googleapis/sheets`, service account)
+- Frontend: React (Vite), static files
+- Messages: built-in templates, optionally personalized per lead with Groq (OpenAI-compatible API, plain `fetch`, key kept on the server)
+- Login: one shared password, signed session cookie
 
-## Try it without Google Sheets
+## Try it locally without any accounts
 
 ```bash
 npm install
 npm run demo        # API on :3001 (in-memory data, 3 EXAMPLE leads) + app on http://localhost:5173
 ```
 
-Demo mode resets when you stop it. Use it to look around, then set up the Sheet below.
+Demo mode resets when you stop it and **only runs locally** (production refuses it). Add `GROQ_API_KEY=...` to a `.env` file to try the AI features there too.
 
-## Setup with Google Sheets
+## Setup
 
-### 1. Create a service account
+### 1. Google Sheets (service account)
 
 1. Open the [Google Cloud console](https://console.cloud.google.com/) and create (or pick) a project.
 2. **APIs & Services → Library →** enable **Google Sheets API**.
 3. **IAM & Admin → Service Accounts → Create service account** (any name, e.g. `outreach-desk`). No roles are needed.
-4. Open the new service account → **Keys → Add key → Create new key → JSON**. A key file downloads.
-5. Save it as `credentials/service-account.json` in this project. The `credentials/` folder and every `*service-account*.json` file are in `.gitignore`. **Never commit this file.**
+4. Open it → **Keys → Add key → Create new key → JSON**. A key file downloads.
+5. Locally, save it as `credentials/service-account.json`. The `credentials/` folder and every `*service-account*.json` / `*-key.json` file are in `.gitignore`. **Never commit this file.**
+6. Create a blank Google Sheet. Its ID is the long part of the URL: `https://docs.google.com/spreadsheets/d/`**`<THIS PART>`**`/edit`.
+7. Click **Share** and add the service account's email (the `client_email` in the JSON, ending in `iam.gserviceaccount.com`) as an **Editor**.
 
-### 2. Create the Sheet and share it
+You do not create any tabs. On first use the app creates `Leads`, `Log`, `Messages` and `Config`, writes the header rows, and fills in default settings.
 
-1. Create a blank Google Sheet. The ID is the long part of its URL: `https://docs.google.com/spreadsheets/d/`**`<THIS PART>`**`/edit`.
-2. Click **Share** and add the service account's email (the `client_email` value in the JSON, ending in `iam.gserviceaccount.com`) as an **Editor**.
+### 2. Groq API key (optional)
 
-You do not need to create any tabs. On first start the app creates `Leads`, `Log` and `Config`, writes the header rows, and fills in default settings.
+1. Sign in at [console.groq.com](https://console.groq.com/) and open **API Keys → Create API Key**.
+2. Copy the key (it starts with `gsk_`) and set it as `GROQ_API_KEY`. It is shown once.
 
-### 3. Fill in `.env`
+Without a key everything still works with the built-in templates; Settings shows that personalization is off.
 
-```bash
-cp .env.example .env
-```
+> **Privacy:** free-tier AI providers may use prompts to improve their service. Only lead data goes into prompts: business name, the owner's first name, city, problem, note, hook, and the messages you already sent to that lead. Social links, email addresses, ids and your account names are never sent. Do not put anything private in a lead's note.
 
-```
-GOOGLE_SHEET_ID=<the sheet id>
-GOOGLE_SERVICE_ACCOUNT_JSON=./credentials/service-account.json
-```
+### 3. Environment variables
 
-### 4. Run
+| Variable | Required | What it is |
+| --- | --- | --- |
+| `GOOGLE_SHEET_ID` | yes | The sheet ID from its URL. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | yes | **Production:** the full key file contents as one line of JSON. **Local:** a file path such as `./credentials/service-account.json`. Both forms work. |
+| `APP_PASSWORD` | production | The login password. At least 10 characters; use a long passphrase. |
+| `SESSION_SECRET` | production | At least 32 random characters, e.g. `openssl rand -hex 32`. Signs the session cookie. |
+| `GROQ_API_KEY` | no | Turns on Regenerate and "Generate all". Server-side only. |
+| `GROQ_MODEL` | no | Default `openai/gpt-oss-120b`. |
+| `GROQ_MAX_RPM` | no | Max AI requests per minute, default `10`. Keeps free-tier limits safe. |
+| `GROQ_BASE_URL` | no | Defaults to `https://api.groq.com/openai/v1`. Only meant for tests with a fake server. |
+| `PORT` | no | Local server port, default `3001`. |
+
+In production (any Vercel deployment, or `NODE_ENV=production`) the app **refuses to respond** unless both `APP_PASSWORD` and `SESSION_SECRET` are set and long enough. Locally, login is off unless you set them.
+
+Locally, copy `.env.example` to `.env` and fill it in. `.env` is git-ignored.
+
+## Run locally
 
 ```bash
 npm install
-npm run seed        # optional: adds 3 fake leads named "EXAMPLE – …"
-npm run dev         # API on :3001 + app on http://localhost:5173
+npm run seed        # optional: adds 3 fake leads named "EXAMPLE – …" to your sheet
+npm run dev         # API on 127.0.0.1:3001 + app on http://localhost:5173
 ```
 
-Single-process mode (what you would leave running day to day):
+The local server listens on `127.0.0.1` only and rejects other host names. (This restriction is local-only; on Vercel the app is public and protected by the login instead.)
 
-```bash
-npm run build
-npm start           # everything on http://localhost:3001
-```
+Single-process local mode: `npm run build && npm start` serves everything on http://localhost:3001.
 
-The server listens on `127.0.0.1` only and rejects requests for any other host name. There is no login, so do not expose it to a network.
+## Deploy on Vercel
 
-Delete the EXAMPLE leads from the Leads tab (open a lead → More → Edit lead → Delete) when you are done trying things out.
+The repo is already set up for Vercel: `vercel.json` builds the client to static files, and `api/[...path].js` is the single serverless function that serves every `/api/*` route through the same Express app used locally.
+
+1. Install the CLI and sign in: `npm i -g vercel`, then `vercel login`.
+2. From the project folder, create the project: `vercel link` (choose "Other" if asked for a framework; the settings come from `vercel.json`).
+3. Add the environment variables for **Production**. Paste secrets when prompted and mark them sensitive:
+   ```bash
+   vercel env add GOOGLE_SHEET_ID production
+   jq -c . credentials/service-account.json | vercel env add GOOGLE_SERVICE_ACCOUNT_JSON production
+   vercel env add APP_PASSWORD production
+   openssl rand -hex 32 | vercel env add SESSION_SECRET production
+   vercel env add GROQ_API_KEY production        # optional
+   vercel env add GROQ_MAX_RPM production        # optional
+   ```
+4. Deploy: `vercel --prod`.
+5. Open the URL, sign in with `APP_PASSWORD`, then fill in your name, studio and postal address in **Settings**.
+
+Before any `git push` or deploy, check `git status` and make sure no `.env`, key file or `node_modules` is listed. They are in `.gitignore` and `.vercelignore`.
+
+### Production notes
+
+- **Login limits on serverless.** Failed logins are limited to 5 per 15 minutes per IP, plus a fixed delay on every failure. That counter lives in each function instance's memory, so treat it as best effort. The real protection is a long `APP_PASSWORD`. For a hard limit, add a rate-limit rule for `POST /api/login` in the Vercel dashboard under **Firewall**.
+- **AI request limit.** `GROQ_MAX_RPM` is enforced per function instance too. In practice the browser sends one `/api/generate` request at a time, and each request is short (it falls back to the template instead of running past the function time limit).
+- **No server memory is used for data.** Leads, log, sent messages and settings are all in the Sheet. Browser-side only: generated versions and unsent edits are cached in that browser's localStorage.
+- **Session cookie.** `__Host-od_session`: signed, `HttpOnly`, `Secure`, `SameSite=Lax`, 7 days. Every `/api` route requires it except `POST /api/login`. Writes with a foreign `Origin` header are rejected.
 
 ## Sheet layout
 
@@ -78,43 +114,50 @@ Delete the EXAMPLE leads from the Leads tab (open a lead → More → Edit lead 
 | `verified` | `TRUE`/`FALSE`: "I opened it and confirmed the problem" |
 | `order` | import order; decides the default queue order within a priority |
 
-**Log**: `timestamp, leadId, account, track, step, channel`. `track` is `cold`, `demo` or `reply` (the photo-permission message); `step` is the index of the message sent (0 = first message of that track); `channel` is `ig`, `fb` or `email`. Pressing **Undo** appends a row with channel `undo` that cancels the matching send, so the daily count frees the slot without deleting history.
+**Log**: `timestamp, leadId, account, track, step, channel`. `track` is `cold`, `demo` or `reply`; `step` is the index of the message sent (0 = first of that track); `channel` is `ig`, `fb`, `email` or `undo`.
 
-**Config**: `key, value` for `accA, accB, cap, gaps, setupPrice, monthlyPrice, yourName, studio, address, autoMark`. Everything is editable in the Settings tab.
+**Messages**: `timestamp, leadId, kind, text`. Written when you press **Mark sent**, with the text exactly as you sent it (after your edits). `kind` is `cold`, `followup1-3`, `replyAck`, `demo`, `demoNudge1-3`. **Undo** appends a compensating row (`<kind>:undo`, empty text) instead of deleting anything. These are the "earlier messages" the AI is told not to repeat.
 
-You can edit the Sheet by hand. Reload the app (Refresh button) to pick changes up.
+**Config**: `key, value` for `accA, accB, cap, gaps, yourName, studio, address` and the three demo packages (`pkgNName`, `pkgNSetup`, `pkgNMonthly`, `pkgNNote`). All editable in Settings.
+
+### Demo packages
+
+Defaults: **Website** ($247 setup, no monthly fee), **Website that books for you** ($297 setup + $33/month, labelled "Recommended"), **Book, pay & sign online** ($597 setup + $79/month). Monthly may be empty; the demo message then says "no monthly fee". The demo message always shows setup and monthly together for every package and ends with: cancel anytime, no contract, and your website, domain and photos stay yours. The app writes no other prices anywhere.
 
 ## How the day works
 
 1. **Today** shows, in order: *Replies to handle*, *Follow-ups due* (most overdue first), *New DMs*, *Sent today*.
-2. On a card, click **Copy + open Instagram** (or Facebook). It copies the textarea and opens the profile in a new tab. Paste, send it yourself, come back and press **Mark sent**. **Copy as email** adds a subject line and a footer with your name, studio, postal address and an unsubscribe line.
-3. Daily limit: 10 **new** first messages per account (configurable), counted from the Log for today's date. Follow-ups and replies you send also add to each account's real daily volume, even though only new DMs fill the meters.
-4. Sequence: pitch → follow-up 1 → 2 → 3 (gaps from Config, default 2/3/4 days), then the lead is `done`. A follow-up always comes from the account that sent the first message.
-5. When someone replies, use **More → They replied**. The card moves to the top and offers the photo-permission message. After they agree, build the private demo, paste the link into the card, and the message switches to demo delivery. Marking that sent starts the demo track (demo message, then 3 nudges).
-6. For `down`/`parked` leads, open the site and tick **I opened it and confirmed the problem**. **Mark sent** stays disabled for the first message until you do, because the pitch says you tried the site.
+2. On a card, click **Copy + open Instagram** (or Facebook). It copies the textarea and opens the profile. Paste, send it yourself, return, and press **Mark sent**. That button is always an explicit click. **Copy as email** adds a subject and a footer with your name, studio, postal address and an unsubscribe line.
+3. Daily limit: 10 **new** first messages per account (configurable), counted from the Log. Follow-ups and replies you send also add to each account's real volume.
+4. Sequence: pitch → follow-up 1 → 2 → 3 (gaps from Config, default 2/3/4 days), then `done`. A follow-up always comes from the account that sent the first message.
+5. **More → They replied** moves a lead to the top. After they agree to photos, build the demo, paste the link into the card, and the message becomes the demo delivery. Marking it sent starts the demo track (demo, then 3 nudges).
+6. For `down`/`parked` leads, open the site and tick **I opened it and confirmed the problem**; the first message cannot be marked sent until you do, because it says you tried the site.
+
+### Personalized messages
+
+Each card starts with the built-in **Template** and can be rewritten with **Regenerate**:
+
+- Optional **Hint** ("shorter", "don't mention phones"). It can change tone or length but never the rules.
+- **Versions ◀ ▶** keep every draft, including your own edits, so nothing is lost. Replacing text you edited needs an in-page confirmation, and your edit is saved as a version first.
+- Badge: **Personalized** or **Template**. If both hook and note are empty you get a reminder: the more specific your note, the more personal the message.
+- **Generate all for today** goes through the Today cards one at a time with "7 of 20" progress and a Cancel button. It skips cards you edited and cards that already have a personalized draft, pauses to stay under `GROQ_MAX_RPM`, stops cleanly if the provider rate-limits, and leaves the rest as templates.
+- Generated text is cached per lead and step in your browser, so reopening the app does not regenerate.
+
+The server builds every prompt itself from the stored lead, so the browser can only send a lead id, a message kind, an optional hint and earlier drafts. Every draft is checked before it is returned: no link, price or website address outside demo messages; first messages 110 words or fewer; follow-ups 70 or fewer; no markdown; at most one emoji; nothing that implies the site is already built ("I built", "already built", …). One failed draft is retried with the problem stated; if it fails again you get the template. In demo messages the AI writes the intro and the server inserts the exact demo link and the package list from Config.
 
 ### Import
 
-Leads tab → **Import**. Paste rows copied from a sheet (tab-separated): `business, website, Instagram, Facebook, note, email`. Duplicate names are skipped, `fbclid`/`utm_*` and similar tracking parameters are stripped, an email is pulled from the email column or the note, and the problem is guessed from the note and whether a site exists. Check the preview before importing. Cells that contain line breaks will split into extra rows.
-
-### Auto-mark
-
-Settings → **Auto-mark as sent**. Off by default. When on, clicking **Copy + open Instagram/Facebook** also marks the lead as sent immediately (the 8-second Undo still applies). It records the click, not the actual send, so leave it off if you sometimes copy and then change your mind.
-
-## Message rules built in
-
-- The pitch never says a site is already built. It offers to build a free private demo "within the hour of you saying yes".
-- No link in the first DM.
-- The pitch says you run a small web design studio. The "Where are you based?" quick reply says plainly that the studio is in Pakistan.
-- At most 3 follow-ups.
-
-You can edit any message in its textarea before copying. Edits are kept until you mark the message sent.
+Leads tab → **Import**. Paste tab-separated rows: `business, website, Instagram, Facebook, note, email`. Duplicate names are skipped, tracking parameters are stripped, an email is pulled out, and the problem is guessed. Check the preview first.
 
 ## API
 
-`GET/POST /api/leads`, `PATCH/DELETE /api/leads/:id`, `GET/PUT /api/config`, `POST /api/log`, plus `GET /api/log` (last 14 days; the browser needs it for today's counts, the streak and weekly stats). `POST /api/leads` accepts a single lead, an array, or `{ "leads": [...] }`.
+All routes need the session cookie except `POST /api/login`.
 
-The frontend reads once on load and after every write. It does not poll. The only other reads are the Refresh button and a reload when you return to the tab after at least a minute (skipped while you are typing).
+`POST /api/login` · `POST /api/logout` · `GET /api/session` · `GET/POST /api/leads` · `PATCH/DELETE /api/leads/:id` · `GET/PUT /api/config` · `GET/POST /api/log` · `POST /api/generate`
+
+`POST /api/generate { leadId, kind, hint?, previousVariants? }` with `kind` one of `cold, followup1, followup2, followup3, demo, demoNudge1, demoNudge2, demoNudge3, replyAck` returns `{ text, source: "personalized" | "template" }`. Errors carry a `code`: `rate_limited`, `bad_key`, `provider_down`, `not_configured` (and `bad_output`, which is retried and then becomes a template).
+
+The frontend reads once on load and after every write. It does not poll.
 
 ## Tests
 
@@ -122,10 +165,11 @@ The frontend reads once on load and after every write. It does not poll. The onl
 npm test
 ```
 
-Covers message generation, the follow-up sequence, daily limits, undo accounting, ordering, and the importer.
+Covers message building, sequences and limits, the prompt builder (whitelisted lead fields, earlier messages), the draft validator, the Groq adapter with mocked `fetch` (success, 429 then success, 401, malformed output, timeouts), the request queue, authentication (every `/api` route returns 401 without a session, cookie flags, login rate limit, fail-closed production), the Vercel handler, the Messages tab and undo, and `.gitignore`.
 
 ## Troubleshooting
 
-- **"Google Sheets refused access"**: the sheet ID is wrong, or the sheet is not shared with the service account email as Editor.
-- **"Missing GOOGLE_SHEET_ID …"**: `.env` is missing or empty.
-- **Quota / 429**: Sheets limits reads per minute. Wait a minute; the app makes 3 reads per refresh.
+- **"Server is not configured"**: `APP_PASSWORD` / `SESSION_SECRET` are missing or too short in production.
+- **"Google Sheets refused access"**: wrong sheet ID, or the sheet is not shared with the service account email as Editor.
+- **"GOOGLE_SERVICE_ACCOUNT_JSON … is not valid JSON"**: paste the entire key file as one line (`jq -c . key.json`).
+- **Rate limit messages**: wait a minute, or lower `GROQ_MAX_RPM`.

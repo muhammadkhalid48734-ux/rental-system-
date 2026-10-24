@@ -449,3 +449,30 @@ dialog.modal::backdrop { background: rgba(8, 15, 22, 0.6); backdrop-filter: blur
   * { animation-duration: 0.01ms !important; transition: none !important; }
   .confetti { display: none; }
 }
+
+/* ---------- AI generation ---------- */
+.genbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.genbar .grow { flex: 1 1 auto; }
+.versions { display: inline-flex; align-items: center; gap: 6px; }
+.versions .label { margin-right: 2px; }
+.btn.icon { min-width: 38px; padding: 4px 8px; }
+.hint-input { font-size: 14px; }
+.spinner {
+  width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+  display: inline-block; animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+textarea.msg.busy { opacity: 0.55; }
+.genall { gap: 10px; }
+.batch { display: grid; gap: 8px; }
+.batch-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.batch-row .hint { flex: 1 1 160px; min-width: 0; }
+progress { width: 100%; height: 8px; border-radius: 99px; overflow: hidden; border: 0; background: var(--surface-2); accent-color: var(--accent); }
+progress::-webkit-progress-bar { background: var(--surface-2); }
+progress::-webkit-progress-value { background: var(--accent); }
+progress::-moz-progress-bar { background: var(--accent); }
+
+/* ---------- login ---------- */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.login .card { width: min(100%, 380px); gap: 14px; }
+.login .brand { margin-bottom: 4px; }

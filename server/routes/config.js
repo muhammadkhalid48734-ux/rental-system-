@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { CONFIG_DEFAULTS, cleanConfig } from '../schema.js';
 import { ah } from '../util.js';
 
-async function readConfig(store) {
+export async function readConfig(store) {
   const out = { ...CONFIG_DEFAULTS };
   for (const [k, v] of await store.getRows('Config')) if (k in out) out[k] = v ?? '';
   return out;

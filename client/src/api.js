@@ -1,15 +1,29 @@
+let onUnauthorized = () => {};
+export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
+
 async function req(method, url, body) {
   const res = await fetch(url, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    credentials: 'same-origin',
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
+  if (!res.ok) {
+    if (res.status === 401 && url !== '/api/login') onUnauthorized();
+    const err = new Error(json.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    err.code = json.code;
+    err.retryAfterMs = json.retryAfterMs;
+    throw err;
+  }
   return json;
 }
 
 export const api = {
+  session: () => req('GET', '/api/session'),
+  login: (password) => req('POST', '/api/login', { password }),
+  logout: () => req('POST', '/api/logout', {}),
   leads: () => req('GET', '/api/leads').then((r) => r.leads),
   config: () => req('GET', '/api/config').then((r) => r.config),
   log: () => req('GET', '/api/log').then((r) => r.log),
@@ -18,4 +32,5 @@ export const api = {
   deleteLead: (id) => req('DELETE', `/api/leads/${encodeURIComponent(id)}`),
   saveConfig: (config) => req('PUT', '/api/config', config).then((r) => r.config),
   addLog: (entry) => req('POST', '/api/log', entry),
+  generate: (body) => req('POST', '/api/generate', body),
 };

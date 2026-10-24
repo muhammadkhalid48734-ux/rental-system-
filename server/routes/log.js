@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { cleanLogEntry, rowToLog } from '../schema.js';
 import { ah } from '../util.js';
+import { recordMessage } from '../history.js';
 
 const WINDOW_MS = 14 * 24 * 3600 * 1000; // today's counts, undo slack, plus the streak and 7-day stats
 
@@ -16,8 +17,12 @@ export function logRouter(store, lock) {
 
   r.post('/', ah(async (req, res) => {
     const entry = cleanLogEntry(req.body);
-    await lock(() => store.appendRows('Log', [[entry.timestamp, entry.leadId, entry.account, entry.track, entry.step, entry.channel]]));
-    res.json({ entry });
+    await lock(async () => {
+      await store.appendRows('Log', [[entry.timestamp, entry.leadId, entry.account, entry.track, entry.step, entry.channel]]);
+      await recordMessage(store, entry);
+    });
+    const { text, ...publicEntry } = entry;
+    res.json({ entry: publicEntry });
   }));
 
   return r;

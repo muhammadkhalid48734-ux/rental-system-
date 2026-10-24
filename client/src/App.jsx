@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api } from './api.js';
-import { drafts } from './lib/clipboard.js';
+import { api, setUnauthorizedHandler } from './api.js';
+import { genCache } from './lib/genCache.js';
+import { cacheKey } from './lib/gen.js';
 import { applySend } from './lib/messages.js';
 import { buildToday, parseConfig, weekStats } from './lib/schedule.js';
 import Header from './components/Header.jsx';
@@ -9,6 +10,7 @@ import LeadsTab from './components/LeadsTab.jsx';
 import QuickReplies from './components/QuickReplies.jsx';
 import Settings from './components/Settings.jsx';
 import Toasts from './components/Toast.jsx';
+import Login from './components/Login.jsx';
 import { Confetti } from './components/Hero.jsx';
 import { ImportDialog, LeadDialog } from './components/Dialogs.jsx';
 
@@ -30,7 +32,8 @@ export default function App() {
   const [tab, setTabState] = useState(() => store.get('tab', 'today'));
   const [theme, setTheme] = useState(() => store.get('theme', 'auto'));
   const [data, setData] = useState({ leads: [], config: null, log: [], loadedAt: new Date() });
-  const [phase, setPhase] = useState('loading');
+  const [phase, setPhase] = useState('checking');
+  const [session, setSession] = useState({ authRequired: false, llm: { configured: false, model: '' } });
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState([]);
@@ -72,14 +75,36 @@ export default function App() {
       setPhase('ready');
       setLoadError('');
     } catch (err) {
+      if (err.status === 401) return; // the unauthorized handler already switched to the login screen
       setLoadError(err.message);
       setPhase((p) => (p === 'ready' ? p : 'error'));
       toast(`Could not reload: ${err.message}`, { kind: 'bad', ms: 6000 });
     }
   }, [toast]);
 
-  // Read once on load; later reads happen after writes, via Refresh, or when the tab regains focus.
-  useEffect(() => { load(); }, [load]);
+  // Check the session first, then read once; later reads happen after writes, via Refresh, or on tab focus.
+  const start = useCallback(async () => {
+    setPhase('checking');
+    try {
+      setSession(await api.session());
+      setPhase('loading');
+      await load();
+    } catch (err) {
+      if (err.status === 401) return;
+      setLoadError(err.message);
+      setPhase('error');
+    }
+  }, [load]);
+  useEffect(() => {
+    setUnauthorizedHandler(() => setPhase('login'));
+    start();
+  }, [start]);
+
+  const logout = async () => {
+    try { await api.logout(); } catch { /* cookie may already be gone */ }
+    setData({ leads: [], config: null, log: [], loadedAt: new Date() });
+    setPhase('login');
+  };
   useEffect(() => {
     const onVisible = () => {
       const typing = document.activeElement && /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
@@ -123,7 +148,7 @@ export default function App() {
       await api.patchLead(id, patch);
       if (msg) toast(msg);
     }, opts),
-    send: (lead, stage, account, channel, demoLink) => run(async () => {
+    send: (lead, stage, account, channel, demoLink, text) => run(async () => {
       const eff = demoLink !== undefined && lead.status === 'replied' ? { ...lead, demoLink } : lead;
       const patch = applySend(eff, stage, account, new Date().toISOString());
       const prev = pick(lead, Object.keys(patch));
@@ -131,12 +156,12 @@ export default function App() {
 
       await api.patchLead(lead.id, patch);
       try {
-        await api.addLog({ ...entry, channel });
+        await api.addLog({ ...entry, channel, text });
       } catch (err) {
         await api.patchLead(lead.id, prev).catch(() => {});
         throw new Error(`Could not record the send, so it was not marked: ${err.message}`);
       }
-      drafts.clearLead(lead.id);
+      genCache.clear(cacheKey(eff, stage));
 
       toast(`Sent ✓ ${lead.name} · ${today.progress.sent + 1} done today`, {
         kind: 'good',
@@ -157,6 +182,7 @@ export default function App() {
     cfg,
     busy,
     newBy: { A: today.meters.A.used, B: today.meters.B.used },
+    llm: session.llm,
     actions,
   };
 
@@ -173,7 +199,6 @@ export default function App() {
 
   const deleteLead = async (lead) => {
     await api.deleteLead(lead.id);
-    drafts.clearLead(lead.id);
     await load();
     toast(`Deleted ${lead.name}`);
   };
@@ -189,7 +214,9 @@ export default function App() {
     await load();
   };
 
-  if (phase === 'loading') {
+  if (phase === 'login') return <><Login onDone={start} /><Toasts toasts={toasts} dismiss={dismiss} /></>;
+
+  if (phase === 'checking' || phase === 'loading') {
     return (
       <div className="fatal" aria-busy="true" aria-label="Loading">
         <h1>Outreach Desk</h1>
@@ -208,7 +235,7 @@ export default function App() {
         <h1>Outreach Desk</h1>
         <div className="notice bad" role="alert">{loadError}</div>
         <p className="hint">Is the server running (<span className="mono">npm run dev</span>) and is <span className="mono">.env</span> filled in? See README.md.</p>
-        <div className="actions"><button className="btn primary" onClick={load}>Try again</button></div>
+        <div className="actions"><button className="btn primary" onClick={start}>Try again</button></div>
         <Toasts toasts={toasts} dismiss={dismiss} />
       </div>
     );
@@ -230,7 +257,7 @@ export default function App() {
           />
         )}
         {tab === 'replies' && <QuickReplies cfg={cfg} toast={toast} />}
-        {tab === 'settings' && <Settings key={JSON.stringify(data.config)} config={data.config} leads={data.leads} onSave={saveConfig} toast={toast} />}
+        {tab === 'settings' && <Settings key={JSON.stringify(data.config)} config={data.config} leads={data.leads} onSave={saveConfig} toast={toast} session={session} onLogout={logout} />}
       </main>
 
       {dialog?.type === 'add' && <LeadDialog onSave={(f) => saveLead(f, null)} onClose={() => setDialog(null)} />}

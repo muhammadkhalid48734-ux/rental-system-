@@ -5,18 +5,30 @@ export const LEAD_COLS = [
   'status', 'track', 'step', 'account', 'lastSentAt', 'repliedAt', 'demoLink', 'verified', 'order',
 ];
 export const LOG_COLS = ['timestamp', 'leadId', 'account', 'track', 'step', 'channel'];
+// Exact text of every message the user marked as sent (undo adds a "<kind>:undo" row).
+export const MESSAGE_COLS = ['timestamp', 'leadId', 'kind', 'text'];
 
 export const CONFIG_DEFAULTS = {
   accA: 'Account A',
   accB: 'Account B',
   cap: '10',
   gaps: '2,3,4',
-  setupPrice: '$199',
-  monthlyPrice: '$29',
   yourName: '',
   studio: '',
   address: '',
-  autoMark: 'false',
+  // Demo packages. Prices are plain numbers (USD); an empty monthly means "no monthly fee".
+  pkg1Name: 'Website',
+  pkg1Setup: '247',
+  pkg1Monthly: '',
+  pkg1Note: 'Modern mobile site with your items and photos, gallery, booking request form, your domain connected, 1 round of revisions.',
+  pkg2Name: 'Website that books for you',
+  pkg2Setup: '297',
+  pkg2Monthly: '33',
+  pkg2Note: 'Everything in Website, plus an availability calendar that blocks booked dates, booking confirmation email, reminder before the event, review request after, hosting and updates, 30 minutes of edits per month.',
+  pkg3Name: 'Book, pay & sign online',
+  pkg3Setup: '597',
+  pkg3Monthly: '79',
+  pkg3Note: 'Everything in the middle plan, plus online deposit payment, a rental waiver customers sign on their phone, text reminders, and 2 hours of edits per month.',
 };
 
 export const ENUMS = {
@@ -129,7 +141,21 @@ export function cleanConfig(input) {
     if (!ok) throw new HttpError(400, 'gaps must be three day counts like "2,3,4"');
     out.gaps = parts.join(',');
   }
-  if ('autoMark' in out) out.autoMark = String(out.autoMark).toLowerCase() === 'true' ? 'true' : 'false';
+  for (const n of [1, 2, 3]) {
+    const name = `pkg${n}Name`;
+    if (name in out && !out[name]) throw new HttpError(400, `Package ${n} needs a name`);
+    for (const [field, optional] of [[`pkg${n}Setup`, false], [`pkg${n}Monthly`, true]]) {
+      if (!(field in out)) continue;
+      const v = out[field].replace(/[$,\s]/g, '');
+      if (!v && optional) { out[field] = ''; continue; }
+      if (!/^\d{1,6}(\.\d{1,2})?$/.test(v)) {
+        throw new HttpError(400, `${field.includes('Setup') ? 'Setup' : 'Monthly'} price for package ${n} must be a number${optional ? ' (or empty for no monthly fee)' : ''}`);
+      }
+      out[field] = v;
+    }
+    const note = `pkg${n}Note`;
+    if (note in out) out[note] = out[note].slice(0, 400);
+  }
   return out;
 }
 
@@ -139,6 +165,7 @@ export function cleanLogEntry(input) {
   if (!leadId) throw new HttpError(400, 'leadId is required');
   const step = Number(input.step);
   if (!Number.isInteger(step) || step < 0 || step > 4) throw new HttpError(400, 'step must be 0-4');
+  const text = typeof input.text === 'string' ? input.text.slice(0, 4000) : '';
   return {
     timestamp: new Date().toISOString(),
     leadId,
@@ -146,5 +173,6 @@ export function cleanLogEntry(input) {
     track: pickEnum(ENUMS.logTrack, input.track, 'track'),
     step,
     channel: pickEnum(ENUMS.channel, input.channel, 'channel'),
+    text,
   };
 }

@@ -28,10 +28,46 @@ export const domainOf = (site) => {
 };
 
 export const money = (v) => {
-  const s = String(v || '').trim();
-  if (!s) return '[set price in Settings]';
-  return /^\d/.test(s) ? `$${s}` : s;
+  const s = String(v ?? '').trim().replace(/^\$/, '');
+  return s ? `$${s}` : '';
 };
+
+// ---- demo packages (names and prices come only from Config) --------------------------------
+
+export const RECOMMENDED_PACKAGE = 2;
+
+export function packages(config) {
+  return [1, 2, 3].map((n) => ({
+    n,
+    name: String(config[`pkg${n}Name`] || '').trim(),
+    setup: String(config[`pkg${n}Setup`] || '').trim().replace(/^\$/, ''),
+    monthly: String(config[`pkg${n}Monthly`] || '').trim().replace(/^\$/, ''),
+    note: String(config[`pkg${n}Note`] || '').trim(),
+    recommended: n === RECOMMENDED_PACKAGE,
+  }));
+}
+
+/** Setup and monthly always appear together; no monthly price reads "no monthly fee". */
+export const priceLine = (p) =>
+  p.monthly ? `${money(p.setup)} setup + ${money(p.monthly)}/month` : `${money(p.setup)} setup, no monthly fee`;
+
+export function packagesBlock(config) {
+  return packages(config)
+    .map((p) => `${p.n}) ${p.name}${p.recommended ? ' (Recommended)' : ''}: ${priceLine(p)}`)
+    .join('\n');
+}
+
+export const CLOSING_LINE = 'Cancel anytime, no contract, and your website, domain and photos stay yours.';
+
+/** Every dollar amount a message may legitimately contain. */
+export function allowedAmounts(config) {
+  const set = new Set();
+  for (const p of packages(config)) {
+    if (p.setup) set.add(Number(p.setup));
+    if (p.monthly) set.add(Number(p.monthly));
+  }
+  return set;
+}
 
 const greeting = (lead) => {
   const f = firstName(lead.owner);
@@ -92,7 +128,7 @@ export function buildMessage(stage, lead, config) {
     case 'reply':
       return `${hi} Thanks so much for getting back to me! To make the demo feel like ${lead.name}, would it be okay if I use a few photos from your page in a private demo? Only you would see it, and I'll remove any photo you'd rather I didn't use. If you prefer, you can also send me a few of your favorites directly.`;
     case 'demo':
-      return `${hi} Thanks again for the go-ahead! Here's the private demo I built for ${lead.name}: ${String(lead.demoLink || '').trim()}\n\nOnly you have this link, and everything is easy to change: photos, wording, prices, whatever you'd like different. If you want it live, it's ${money(config.setupPrice)} setup + ${money(config.monthlyPrice)}/month. No hard feelings if it's not for you.`;
+      return `${hi} Thanks again for the go-ahead! Here's the private demo I built for ${lead.name}: ${String(lead.demoLink || '').trim()}\n\nOnly you have this link, and everything is easy to change: photos, wording, whatever you'd like different.\n\nIf you'd like it live, here are the options (setup and monthly shown together):\n${packagesBlock(config)}\n\n${CLOSING_LINE} No hard feelings if it's not for you.`;
     case 'nudge1':
       return `${hi} Quick check: did the demo link open okay for you? Happy to adjust anything you spot.`;
     case 'nudge2':
@@ -191,10 +227,18 @@ export function applySend(lead, st, account, nowIso) {
 export function quickReplies(config) {
   const studio = String(config.studio || '').trim();
   const studioName = studio ? `my studio, ${studio},` : 'my studio';
+  const block = packagesBlock(config);
+  const included = packages(config)
+    .map((p) => `${p.n}) ${p.name}${p.recommended ? ' (Recommended)' : ''}: ${p.note}`)
+    .join('\n\n');
   return [
     {
       title: 'How much?',
-      text: `The demo is free. If you like it and want it live, it's ${money(config.setupPrice)} setup + ${money(config.monthlyPrice)}/month. No obligation either way.`,
+      text: `The demo is free. If you like it and want it live, there are three options (setup and monthly shown together):\n${block}\n\n${CLOSING_LINE}`,
+    },
+    {
+      title: "What's included?",
+      text: `Here's what each option includes:\n\n${included}\n\nPrices:\n${block}`,
     },
     {
       title: 'Where are you based?',
@@ -202,7 +246,7 @@ export function quickReplies(config) {
     },
     {
       title: 'Is it free?',
-      text: `The demo is completely free and private, with no obligation. You only pay if you love it and want it live: ${money(config.setupPrice)} setup + ${money(config.monthlyPrice)}/month.`,
+      text: "The demo is completely free and private, with no obligation. You only pay if you love it and want it live, and I'll send the options and prices then. Cancel anytime, no contract.",
     },
     {
       title: 'Examples?',
