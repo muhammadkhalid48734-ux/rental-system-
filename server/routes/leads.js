@@ -56,27 +56,42 @@ export function leadsRouter(store, lock) {
     res.json(await lock(() => createLeads(store, inputs)));
   }));
 
-  r.patch('/:id', ah(async (req, res) => {
+  // The id is accepted in the path (/api/leads/<id>) or as ?id=<id>. The client uses the query form, because it
+  // is a single path segment and so works with any single-segment function routing.
+  const idOf = (req) => {
+    const id = req.params.id ?? req.query.id;
+    if (typeof id !== 'string' || !id) throw new HttpError(400, 'Lead id is required');
+    return id;
+  };
+
+  const patch = ah(async (req, res) => {
+    const id = idOf(req);
     const lead = await lock(async () => {
       const rows = await store.getRows('Leads');
-      const i = rows.findIndex((row) => row[0] === req.params.id);
+      const i = rows.findIndex((row) => row[0] === id);
       if (i < 0) throw new HttpError(404, 'Lead not found');
       const updated = cleanLead(req.body, rowToLead(rows[i]));
       await store.updateRow('Leads', i, leadToRow(updated));
       return updated;
     });
     res.json({ lead });
-  }));
+  });
 
-  r.delete('/:id', ah(async (req, res) => {
+  const remove = ah(async (req, res) => {
+    const id = idOf(req);
     await lock(async () => {
       const rows = await store.getRows('Leads');
-      const i = rows.findIndex((row) => row[0] === req.params.id);
+      const i = rows.findIndex((row) => row[0] === id);
       if (i < 0) throw new HttpError(404, 'Lead not found');
       await store.deleteRow('Leads', i);
     });
     res.json({ ok: true });
-  }));
+  });
+
+  r.patch('/', patch);
+  r.patch('/:id', patch);
+  r.delete('/', remove);
+  r.delete('/:id', remove);
 
   return r;
 }

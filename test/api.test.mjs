@@ -393,6 +393,24 @@ test('generate: input validation (kind, unknown lead, demo needs a link, oversiz
   } finally { await t.close(); }
 });
 
+test('leads: PATCH and DELETE accept the id as ?id= (single path segment) as well as in the path', async () => {
+  const t = await setup();
+  try {
+    await login(t.call);
+    const made = await t.call('POST', '/api/leads', { leads: [{ name: 'Query Id Bounce Co', problem: 'nosite' }] });
+    const id = made.json.created[0].id;
+    const a = await t.call('PATCH', `/api/leads?id=${id}`, { account: 'B' });
+    assert.equal(a.status, 200);
+    assert.equal(a.json.lead.account, 'B');
+    const b = await t.call('PATCH', `/api/leads/${id}`, { account: 'A' });
+    assert.equal(b.json.lead.account, 'A');
+    assert.equal((await t.call('PATCH', '/api/leads', { account: 'A' })).status, 400);
+    assert.equal((await t.call('PATCH', '/api/leads?id=nope', { account: 'A' })).status, 404);
+    assert.equal((await t.call('DELETE', `/api/leads?id=${id}`)).status, 200);
+    assert.equal((await t.call('DELETE', `/api/leads?id=${id}`)).status, 404);
+  } finally { await t.close(); }
+});
+
 test('generate: demo messages get the exact link and Config packages substituted by the server', async () => {
   const draft = 'Hi Dana! Your private demo is ready at [[LINK]]. Only you have this link, and everything is easy to change.\n[[PACKAGES]]';
   const llm = fakeLlm(draft);

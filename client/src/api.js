@@ -11,7 +11,7 @@ async function req(method, url, body) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && url !== '/api/login') onUnauthorized();
-    const path = url.replace(/\/[0-9a-f]{8}-[0-9a-f-]{27}/g, '/<id>');
+    const path = url.replace(/id=[0-9a-f-]{36}/g, 'id=<id>');
     const fallback = res.status === 404
       ? `The server did not recognise ${method} ${path} (HTTP 404, no JSON answer). The deployment may be out of date or misrouted: redeploy and check the Vercel function logs.`
       : `Request failed (${res.status})`;
@@ -32,8 +32,8 @@ export const api = {
   config: () => req('GET', '/api/config').then((r) => r.config),
   log: () => req('GET', '/api/log').then((r) => r.log),
   createLeads: (leads) => req('POST', '/api/leads', { leads }),
-  patchLead: (id, patch) => req('PATCH', `/api/leads/${encodeURIComponent(id)}`, patch),
-  deleteLead: (id) => req('DELETE', `/api/leads/${encodeURIComponent(id)}`),
+  patchLead: (id, patch) => req('PATCH', `/api/leads?id=${encodeURIComponent(id)}`, patch),
+  deleteLead: (id) => req('DELETE', `/api/leads?id=${encodeURIComponent(id)}`),
   saveConfig: (config) => req('PUT', '/api/config', config).then((r) => r.config),
   addLog: (entry) => req('POST', '/api/log', entry),
   generate: (body) => req('POST', '/api/generate', body),
