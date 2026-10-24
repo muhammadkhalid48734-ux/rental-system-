@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { copyText, leadsToCsv } from '../lib/clipboard.js';
+import { I, Icon } from './icons.jsx';
 
 const GROUPS = [
   {
@@ -56,7 +57,8 @@ export default function Settings({ config, leads, onSave, toast, session, onLogo
 
   return (
     <>
-      <form className="section" onSubmit={save}>
+      <h2 className="sr-only">Settings</h2>
+      <form className="stack" onSubmit={save}>
         {GROUPS.map((g) => (
           <div className="card" key={g.title}>
             <div className="group-title">
@@ -110,19 +112,25 @@ export default function Settings({ config, leads, onSave, toast, session, onLogo
 
         <div className="savebar">
           <span className="hint">{dirty ? 'You have unsaved changes.' : 'All changes saved.'}</span>
-          <button className="btn primary" type="submit" disabled={saving || !dirty}>{saving ? 'Saving…' : 'Save settings'}</button>
+          <button className="btn btn-primary" type="submit" disabled={saving || !dirty}>{saving ? 'Saving…' : 'Save settings'}</button>
         </div>
       </form>
 
       <div className="card">
         <div className="group-title">
           <h3>AI personalization</h3>
-          {session.llm.configured ? (
-            <p className="hint">On. Messages are written by Groq (<span className="mono">{session.llm.model}</span>). Only lead data (business name, owner's first name, city, problem, note, hook) and your earlier messages to that lead are sent; free-tier providers may use prompts to improve their service.</p>
-          ) : (
-            <p className="hint warn">Off. Add your Groq API key to the server's environment settings (see the README) to turn on Regenerate and “Generate all”. The app keeps working with the built-in templates.</p>
-          )}
         </div>
+        {session.llm.configured ? (
+          <div className="notice notice-ok" role="status">
+            <Icon as={I.CheckCircle} />
+            <div>On. Messages are written by Groq (<span className="num">{session.llm.model}</span>). Only lead data (business name, owner's first name, city, problem, note, hook) and your earlier messages to that lead are sent. Free-tier providers may use prompts to improve their service.</div>
+          </div>
+        ) : (
+          <div className="notice notice-warn" role="status">
+            <Icon as={I.Warning} />
+            <div>Off. Add your Groq API key to the server's environment settings (see the README) to turn on Regenerate and Generate all. The app keeps working with the built-in templates.</div>
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -131,14 +139,14 @@ export default function Settings({ config, leads, onSave, toast, session, onLogo
           <p className="hint">Copies every lead as CSV so you can paste it into a spreadsheet.</p>
         </div>
         <div className="actions">
-          <button className="btn" onClick={exportCsv}>Copy all leads as CSV</button>
+          <button className="btn btn-secondary" onClick={exportCsv}><Icon as={I.CopySimple} /> Copy all leads as CSV</button>
         </div>
       </div>
 
       {session.authRequired && (
         <div className="card">
           <div className="group-title"><h3>Session</h3></div>
-          <div className="actions"><button className="btn" onClick={onLogout}>Log out</button></div>
+          <div className="actions"><button className="btn btn-secondary" onClick={onLogout}><Icon as={I.SignOut} /> Log out</button></div>
         </div>
       )}
     </>

@@ -137,6 +137,20 @@ Defaults: **Website** ($247 setup, no monthly fee), **Website that books for you
 5. **More → They replied** moves a lead to the top. After they agree to photos, build the demo, paste the link into the card, and the message becomes the demo delivery. Marking it sent starts the demo track (demo, then 3 nudges).
 6. For `down`/`parked` leads, open the site and tick **I opened it and confirmed the problem**; the first message cannot be marked sent until you do, because it says you tried the site.
 
+### Layout and keyboard
+
+On a screen 1024px or wider, Today is a two-pane workbench: the queue on the left, the selected lead on the right. After **Mark sent** the next lead opens automatically, and **Undo** (8 seconds) brings the previous one back. On a phone the queue is a list and a lead opens full screen; **Back to queue** returns to the same scroll position. The header shows "N of M tasks today" (new DMs plus follow-ups) and each account's meter.
+
+| Key | Action |
+| --- | --- |
+| Up / Down | Move through the queue |
+| C | Copy the current message |
+| ? | Show the shortcuts |
+
+There is deliberately no shortcut for **Mark sent**; it is only ever a click. The **About this lead** strip above the message shows the problem, the note and the hook (edit them in place, saved when you leave the field) and an **Open site** link.
+
+Fonts (Plus Jakarta Sans, Inter) and icons (Phosphor) are bundled with the app, so the Content-Security-Policy allows only `'self'` for styles and fonts and nothing is loaded from a third party.
+
 ### Personalized messages
 
 Each card starts with the built-in **Template** and can be rewritten with **Regenerate**:

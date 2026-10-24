@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { I, Icon } from './icons.jsx';
 
 export default function Login({ onDone }) {
   const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -26,24 +28,43 @@ export default function Login({ onDone }) {
     <main className="login">
       <form className="card" onSubmit={submit}>
         <div className="brand">
-          <span className="logo" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
-          </span>
+          <span className="logo" aria-hidden="true"><Icon as={I.LockKey} size="lg" /></span>
           <h1>Outreach Desk</h1>
         </div>
-        <label className="field">
-          <span>Password</span>
-          <input
-            type="password"
-            autoComplete="current-password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={!!error}
-          />
-        </label>
-        {error && <div className="notice bad" role="alert">{error}</div>}
-        <button className="btn primary big" type="submit" disabled={busy || !password}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        <p className="hint">Sign in to open your queue.</p>
+        <div className="field">
+          <label className="label" htmlFor="login-password">Password</label>
+          <div className="input-icon">
+            <input
+              id="login-password"
+              type={show ? 'text' : 'password'}
+              autoComplete="current-password"
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={!!error}
+              aria-describedby={error ? 'login-error' : undefined}
+              style={{ paddingLeft: 'var(--s-3)', paddingRight: 56 }}
+            />
+            <button
+              type="button"
+              className="btn btn-quiet btn-icon"
+              style={{ position: 'absolute', right: 0, top: 0 }}
+              aria-label={show ? 'Hide password' : 'Show password'}
+              aria-pressed={show}
+              onClick={() => setShow((v) => !v)}
+            >
+              <Icon as={show ? I.EyeSlash : I.Eye} />
+            </button>
+          </div>
+        </div>
+        {error && (
+          <div className="notice notice-bad" role="alert" id="login-error">
+            <Icon as={I.XCircle} />
+            <div>{error}</div>
+          </div>
+        )}
+        <button className="btn btn-primary" type="submit" disabled={busy || !password}>{busy ? 'Signing in' : 'Sign in'}</button>
       </form>
     </main>
   );

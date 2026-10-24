@@ -3,7 +3,8 @@ import { api, setUnauthorizedHandler } from './api.js';
 import { genCache } from './lib/genCache.js';
 import { cacheKey } from './lib/gen.js';
 import { applySend } from './lib/messages.js';
-import { buildToday, parseConfig, weekStats } from './lib/schedule.js';
+import { buildToday, parseConfig } from './lib/schedule.js';
+import { useMediaQuery } from './lib/ui.js';
 import Header from './components/Header.jsx';
 import Today from './components/Today.jsx';
 import LeadsTab from './components/LeadsTab.jsx';
@@ -11,7 +12,7 @@ import QuickReplies from './components/QuickReplies.jsx';
 import Settings from './components/Settings.jsx';
 import Toasts from './components/Toast.jsx';
 import Login from './components/Login.jsx';
-import { Confetti } from './components/Hero.jsx';
+import { I, Icon } from './components/icons.jsx';
 import { ImportDialog, LeadDialog } from './components/Dialogs.jsx';
 
 const UNDO_MS = 8000;
@@ -38,17 +39,74 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [dialog, setDialog] = useState(null);
-  const [burst, setBurst] = useState(0);
-  const wasComplete = useRef(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const isWide = useMediaQuery('(min-width: 1024px)');
+  const listScroll = useRef(0);
   const lastLoad = useRef(0);
   const loadSeq = useRef(0);
   const toastId = useRef(0);
 
+  // ---- routing: #/today, #/today/<leadId>, #/leads ... so every screen has a URL and Back behaves
+  const TABS = ['today', 'leads', 'replies', 'settings'];
+  const writeHash = (t, id, { push = false } = {}) => {
+    const url = `#/${t}${id ? `/${id}` : ''}`;
+    if (window.location.hash === url) return;
+    window.history[push ? 'pushState' : 'replaceState']({ od: id ? 'detail' : 'list' }, '', url);
+  };
+  const readHash = () => {
+    const [, t, id] = window.location.hash.match(/^#\/([a-z]+)(?:\/([^/]+))?$/) || [];
+    return { tab: TABS.includes(t) ? t : null, id: id ? decodeURIComponent(id) : null };
+  };
+  const selectedRef = useRef(null);
+  selectedRef.current = selectedId;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const wideRef = useRef(isWide);
+  wideRef.current = isWide;
+
+  const selectLead = useCallback((id, { replace = false } = {}) => {
+    const opening = !wideRef.current && id && !selectedRef.current && !replace;
+    if (opening) listScroll.current = window.scrollY; // remember where the list was
+    setSelectedId(id);
+    writeHash('today', id, { push: opening });
+    if (opening) window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   const setTab = (t) => {
     setTabState(t);
     store.set('tab', t);
+    setSelectedId(null);
+    writeHash(t, null);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
+
+  const onBack = () => {
+    if (window.history.state?.od === 'detail') window.history.back();
+    else { setSelectedId(null); writeHash('today', null); }
+  };
+
+  useEffect(() => {
+    const { tab: t, id } = readHash();
+    if (t) { setTabState(t); if (t === 'today' && id) setSelectedId(id); }
+    const onPop = () => {
+      const h = readHash();
+      if (h.tab) setTabState(h.tab);
+      setSelectedId(h.tab === 'today' ? h.id : null);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // Coming back to the list on a phone restores the scroll position.
+  const prevSelected = useRef(null);
+  useEffect(() => {
+    if (!isWide && prevSelected.current && !selectedId && tab === 'today') {
+      const y = listScroll.current;
+      requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+    }
+    prevSelected.current = selectedId;
+  }, [selectedId, isWide, tab]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -132,14 +190,46 @@ export default function App() {
   const cfg = useMemo(() => parseConfig(data.config || {}), [data.config]);
   const now = data.loadedAt;
   const today = useMemo(() => buildToday(data.leads, data.log, cfg, now), [data.leads, data.log, cfg, now]);
-  const week = useMemo(() => weekStats(data.leads, data.log, now), [data.leads, data.log, now]);
 
-  // Celebrate the moment today's list goes from "something left" to "all done" (not on first load).
+  // Queue order drives arrow-key navigation and "open the next lead after Mark sent".
+  const flatIds = useMemo(
+    () => [...today.replies.map((l) => l.id), ...today.followups.map((x) => x.lead.id), ...today.newDMs.map((x) => x.lead.id)],
+    [today],
+  );
+  const flatRef = useRef(flatIds);
+  flatRef.current = flatIds;
+
+  // Wide screens always show a lead; a lead that left the queue (won, lost, deleted) hands over to its neighbour.
   useEffect(() => {
-    if (phase !== 'ready') return;
-    if (wasComplete.current === false && today.progress.complete) setBurst((b) => b + 1);
-    wasComplete.current = today.progress.complete;
-  }, [phase, today.progress.complete]);
+    if (phase !== 'ready' || busy || tab !== 'today') return;
+    if (selectedId && flatIds.includes(selectedId)) return;
+    if (isWide) selectLead(flatIds[0] ?? null, { replace: true });
+    else if (selectedId) { setSelectedId(null); writeHash('today', null); }
+  }, [phase, busy, tab, isWide, selectedId, flatIds, selectLead]);
+
+  // Keyboard: Up/Down move in the queue, C copies, ? lists the shortcuts. Marking sent is always a click.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable || t.closest?.('[role="menu"]'))) return;
+      if (document.querySelector('dialog[open]')) return;
+      if (e.key === '?') { setShortcutsOpen((o) => !o); e.preventDefault(); return; }
+      if (tabRef.current !== 'today') return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const flat = flatRef.current;
+        if (!flat.length) return;
+        const i = flat.indexOf(selectedRef.current);
+        const next = e.key === 'ArrowDown' ? Math.min(flat.length - 1, i + 1) : Math.max(0, i < 0 ? 0 : i - 1);
+        if (flat[next] !== selectedRef.current) selectLead(flat[next], { replace: wideRef.current || !!selectedRef.current });
+        e.preventDefault();
+      } else if (e.key === 'c' || e.key === 'C') {
+        window.dispatchEvent(new CustomEvent('outreach:copy'));
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selectLead]);
 
   const actions = {
     toast,
@@ -163,7 +253,18 @@ export default function App() {
       }
       genCache.clear(cacheKey(eff, stage));
 
-      toast(`Sent ✓ ${lead.name} · ${today.progress.sent + 1} done today`, {
+      // Open the next lead in the queue (or hand back to the list when it was the last one).
+      if (tabRef.current === 'today') {
+        const flat = flatRef.current;
+        const i = flat.indexOf(lead.id);
+        if (i >= 0) {
+          const next = flat[i + 1] ?? flat[i - 1] ?? null;
+          if (next) selectLead(next, { replace: true });
+          else { setSelectedId(null); writeHash('today', null); }
+        }
+      }
+
+      toast(`Marked sent: ${lead.name}`, {
         kind: 'good',
         ms: UNDO_MS,
         action: {
@@ -171,6 +272,7 @@ export default function App() {
           run: () => run(async () => {
             await api.patchLead(lead.id, prev);
             await api.addLog({ ...entry, channel: 'undo' });
+            if (tabRef.current === 'today') selectLead(lead.id, { replace: !!selectedRef.current || wideRef.current });
             toast('Undone');
           }),
         },
@@ -224,14 +326,15 @@ export default function App() {
 
   if (phase === 'checking' || phase === 'loading') {
     return (
-      <div className="fatal" aria-busy="true" aria-label="Loading">
-        <h1>Outreach Desk</h1>
-        <div className="skeleton">
-          <div className="sk" style={{ height: 150 }} />
-          <div className="sk" style={{ height: 220 }} />
-          <div className="sk" style={{ height: 220 }} />
+      <div aria-busy="true" aria-label="Loading Outreach Desk" role="status">
+        <div className="app-header" style={{ height: 150 }} />
+        <div className="page">
+          <div className="workbench">
+            <div className="skeleton" style={{ height: 420 }} />
+            <div className="skeleton" style={{ height: 420 }} />
+          </div>
+          <p className="hint">Loading your leads from Google Sheets.</p>
         </div>
-        <p className="hint">Loading from Google Sheets…</p>
       </div>
     );
   }
@@ -239,9 +342,15 @@ export default function App() {
     return (
       <div className="fatal">
         <h1>Outreach Desk</h1>
-        <div className="notice bad" role="alert">{loadError}</div>
-        <p className="hint">Is the server running (<span className="mono">npm run dev</span>) and is <span className="mono">.env</span> filled in? See README.md.</p>
-        <div className="actions"><button className="btn primary" onClick={start}>Try again</button></div>
+        <div className="notice notice-bad" role="alert">
+          <Icon as={I.XCircle} />
+          <div>
+            <p><b>Could not load your data.</b></p>
+            <p>{loadError}</p>
+          </div>
+        </div>
+        <p className="hint">Check that the server is running and that the sheet is shared with the service account, then try again. The README lists the setup steps.</p>
+        <div className="actions"><button className="btn btn-primary" onClick={start}><Icon as={I.ArrowsClockwise} /> Try again</button></div>
         <Toasts toasts={toasts} dismiss={dismiss} />
       </div>
     );
@@ -249,21 +358,33 @@ export default function App() {
 
   return (
     <>
+      <a className="skip-link" href="#panel">Skip to main content</a>
       <Header
-        now={now} meters={today.meters} cfg={cfg} tab={tab} setTab={setTab}
+        now={now} tasks={today.progress.tasks} meters={today.meters} cfg={cfg} tab={tab} setTab={setTab}
         theme={theme} cycleTheme={cycleTheme} onRefresh={load} busy={busy}
+        shortcutsOpen={shortcutsOpen} setShortcutsOpen={setShortcutsOpen}
       />
-      <main className="wrap" id="panel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {tab === 'today' && <Today today={today} week={week} now={now} env={env} leadCount={data.leads.length} />}
-        {tab === 'leads' && (
-          <LeadsTab
-            leads={data.leads} env={env}
-            onAdd={() => setDialog({ type: 'add' })}
-            onImport={() => setDialog({ type: 'import' })}
+      <main className="page" id="panel" role="tabpanel" aria-labelledby={`tab-${tab}`} tabIndex={-1}>
+        {tab === 'today' && (
+          <Today
+            today={today} env={env} leadCount={data.leads.length}
+            selectedId={selectedId} onSelect={(id) => selectLead(id)} onBack={onBack} isWide={isWide}
+            onAdd={() => setDialog({ type: 'add' })} onImport={() => setDialog({ type: 'import' })} goTab={setTab}
           />
         )}
-        {tab === 'replies' && <QuickReplies cfg={cfg} toast={toast} />}
-        {tab === 'settings' && <Settings key={JSON.stringify(data.config)} config={data.config} leads={data.leads} onSave={saveConfig} toast={toast} session={session} onLogout={logout} />}
+        {tab !== 'today' && (
+          <div className="narrow-col">
+            {tab === 'leads' && (
+              <LeadsTab
+                leads={data.leads} env={env}
+                onAdd={() => setDialog({ type: 'add' })}
+                onImport={() => setDialog({ type: 'import' })}
+              />
+            )}
+            {tab === 'replies' && <QuickReplies cfg={cfg} toast={toast} />}
+            {tab === 'settings' && <Settings key={JSON.stringify(data.config)} config={data.config} leads={data.leads} onSave={saveConfig} toast={toast} session={session} onLogout={logout} />}
+          </div>
+        )}
       </main>
 
       {dialog?.type === 'add' && <LeadDialog onSave={(f) => saveLead(f, null)} onClose={() => setDialog(null)} />}
@@ -283,7 +404,6 @@ export default function App() {
           onClose={() => setDialog(null)}
         />
       )}
-      <Confetti burst={burst} />
       <Toasts toasts={toasts} dismiss={dismiss} />
     </>
   );

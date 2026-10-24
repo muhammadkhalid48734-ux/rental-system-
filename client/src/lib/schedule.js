@@ -96,7 +96,14 @@ export function buildToday(leads, log, cfg, now = new Date()) {
   const left = todo.replies + todo.followups + todo.newDMs;
   const sent = today.length;
   const goal = sent + left;
+  // Header progress: new DMs plus follow-ups only. Replies (and the demo delivery that answers one) have their own
+  // queue group and are not counted as tasks.
+  const taskSends = today.filter((r) => r.track === 'cold' || (r.track === 'demo' && r.step > 0)).length;
+  const tasks = { done: taskSends, left: followups.length + newDMs.length };
+  tasks.total = tasks.done + tasks.left;
+
   const progress = {
+    tasks,
     sent, left, goal, todo,
     pct: goal ? Math.round((sent / goal) * 100) : 0,
     complete: sent > 0 && left === 0,

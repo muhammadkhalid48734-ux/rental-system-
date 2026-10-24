@@ -234,3 +234,34 @@ test('an empty delivery time shows a visible placeholder instead of inventing a 
   const pitch = buildMessage({ key: 'pitch' }, lead(), parseConfig({ ...CONFIG_DEFAULTS, demoTurnaround: '' }));
   assert.match(pitch, /\[set the demo delivery time in Settings\]/);
 });
+
+test('header tasks = new DMs + follow-ups: done today vs still to do (replies are not tasks)', () => {
+  const at = (h, leadId, track, step, channel = 'ig', account = 'A') => ({ timestamp: new Date(2026, 9, 23, h).toISOString(), leadId, account, track, step, channel });
+  const queued = Array.from({ length: 5 }, (_, i) => lead({ id: `n${i}`, order: i + 1 }));
+  const due = [
+    lead({ id: 'f1', status: 'active', step: 1, lastSentAt: daysAgo(3), account: 'A' }),
+    lead({ id: 'f2', status: 'active', step: 2, lastSentAt: daysAgo(5), account: 'B' }),
+  ];
+  const reply = lead({ id: 'r1', status: 'replied', step: 1, repliedAt: daysAgo(0, 9), lastSentAt: daysAgo(2) });
+  let t = buildToday([...queued, ...due, reply], [], cfg, NOW);
+  assert.deepEqual(t.progress.tasks, { done: 0, left: 7, total: 7 }, '5 new + 2 follow-ups; the reply is not a task');
+  assert.equal(t.progress.todo.replies, 1);
+
+  const log = [
+    at(8, 'x1', 'cold', 0),            // new DM            -> task
+    at(9, 'x2', 'cold', 1),            // follow-up         -> task
+    at(10, 'x3', 'demo', 1),           // demo nudge        -> task
+    at(11, 'x4', 'reply', 0),          // photo-permission  -> not a task
+    at(12, 'x5', 'demo', 0),           // demo delivery     -> not a task
+    { ...at(13, 'x6', 'cold', 0, 'imported'), timestamp: NOW.toISOString() }, // imported history -> never counted
+  ];
+  t = buildToday([...queued.slice(2), ...due, reply], log, cfg, NOW);
+  assert.deepEqual(t.progress.tasks, { done: 3, left: 5, total: 8 });
+
+  // undoing a send removes it from the count
+  t = buildToday([...queued.slice(2), ...due, reply], [...log, { ...at(14, 'x1', 'cold', 0, 'undo') }], cfg, NOW);
+  assert.equal(t.progress.tasks.done, 2);
+
+  t = buildToday([], [], cfg, NOW);
+  assert.deepEqual(t.progress.tasks, { done: 0, left: 0, total: 0 });
+});

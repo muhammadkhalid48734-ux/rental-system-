@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { copyText } from '../lib/clipboard.js';
 import { EMPTY, genCache } from '../lib/genCache.js';
 import { cacheKey, errorMessage, goTo, requestVariant, stashEdit, view } from '../lib/gen.js';
-import { fmtShortDate } from '../lib/dates.js';
 import { buildMessage, getStage, hasLink, hasPlaceholder, PROBLEMS, toEmailText } from '../lib/messages.js';
-import { dueInfo } from '../lib/schedule.js';
+import { dueBadge } from '../lib/ui.js';
+import { I, Icon } from './icons.jsx';
 
 function MoreMenu({ items }) {
   const [open, setOpen] = useState(false);
@@ -12,8 +12,17 @@ function MoreMenu({ items }) {
 
   useEffect(() => {
     if (!open) return undefined;
+    ref.current?.querySelector('[role="menuitem"]')?.focus();
     const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('button')?.focus(); }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const list = [...ref.current.querySelectorAll('[role="menuitem"]')];
+        const i = list.indexOf(document.activeElement);
+        list[(i + (e.key === 'ArrowDown' ? 1 : -1) + list.length) % list.length]?.focus();
+        e.preventDefault();
+      }
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -24,16 +33,13 @@ function MoreMenu({ items }) {
 
   return (
     <div className="menu" ref={ref}>
-      <button className="btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>More ▾</button>
+      <button className="btn btn-quiet" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <Icon as={I.DotsThree} /> More
+      </button>
       {open && (
         <div className="menu-list" role="menu">
           {items.map((it) => (
-            <button
-              key={it.label}
-              role="menuitem"
-              className={it.danger ? 'danger' : ''}
-              onClick={() => { setOpen(false); it.run(); }}
-            >
+            <button key={it.label} role="menuitem" className={it.danger ? 'danger' : ''} onClick={() => { setOpen(false); it.run(); }}>
               {it.label}
             </button>
           ))}
@@ -43,7 +49,67 @@ function MoreMenu({ items }) {
   );
 }
 
-export default function LeadCard({ lead, env, defaultAccount }) {
+/** Problem tag, note and hook (both editable inline, saved on blur), site link, and a nudge when both are empty. */
+function AboutStrip({ lead, actions }) {
+  const [hook, setHook] = useState(lead.hook || '');
+  const [note, setNote] = useState(lead.note || '');
+  useEffect(() => { setHook(lead.hook || ''); }, [lead.hook]);
+  useEffect(() => { setNote(lead.note || ''); }, [lead.note]);
+
+  const save = (field, value) => {
+    const v = value.trim();
+    if (v === (lead[field] || '')) return;
+    actions.patch(lead.id, { [field]: v }, undefined, { quiet: true });
+  };
+  const bothEmpty = !hook.trim() && !note.trim();
+
+  return (
+    <section className="about" aria-label="About this lead">
+      <div className="about-head">
+        <h3>About this lead</h3>
+        <span className={`tag tag-${lead.problem}`}>{PROBLEMS[lead.problem] || lead.problem}</span>
+        <span className="grow" />
+        {lead.site && (
+          <a className="btn btn-secondary btn-sm" href={lead.site} target="_blank" rel="noopener noreferrer">
+            Open site <Icon as={I.ArrowSquareOut} size="sm" />
+          </a>
+        )}
+      </div>
+      <div className="about-fields">
+        <label className="field">
+          <span className="label">Note</span>
+          <textarea
+            rows={2}
+            value={note}
+            maxLength={2000}
+            placeholder="What did you notice about their site or business?"
+            onChange={(e) => setNote(e.target.value)}
+            onBlur={() => save('note', note)}
+          />
+        </label>
+        <label className="field">
+          <span className="label">Hook: finishes “I love …”</span>
+          <input
+            type="text"
+            value={hook}
+            maxLength={300}
+            placeholder="e.g. your pastel balloon arches"
+            onChange={(e) => setHook(e.target.value)}
+            onBlur={() => save('hook', hook)}
+          />
+        </label>
+      </div>
+      {bothEmpty && (
+        <p className="inline-warn" role="note">
+          <Icon as={I.Warning} />
+          <span>The more specific your note, the more personal the message. Add a note or a hook before you personalize.</span>
+        </p>
+      )}
+    </section>
+  );
+}
+
+export default function LeadCard({ lead, env, defaultAccount, active = false }) {
   const { cfg, busy, newBy, actions } = env;
 
   // The demo link is typed into the card; the message switches as soon as a valid link is present.
@@ -57,7 +123,7 @@ export default function LeadCard({ lead, env, defaultAccount }) {
 
   const stage = getStage(eff);
   const showMessage = !!stage && stage.sendable;
-  const due = dueInfo(lead, cfg);
+  const due = dueBadge(lead, cfg);
 
   const isNew = stage?.isNew;
   const account = lead.account || (isNew ? defaultAccount : '') || 'A';
@@ -77,10 +143,12 @@ export default function LeadCard({ lead, env, defaultAccount }) {
   const onType = (val) => genCache.update(gkey, (c) => ({ ...c, draft: val }));
   const resetText = () => genCache.update(gkey, (c) => ({ ...c, draft: null }));
 
-  // Brief "Copied ✓" feedback on the button that was pressed.
+  // "Copied" feedback, and the cue that moves the single primary button from "copy" to "Mark sent".
   const [flashKey, setFlashKey] = useState(null);
+  const [copied, setCopied] = useState(false);
   const flashTimer = useRef(null);
   useEffect(() => () => clearTimeout(flashTimer.current), []);
+  useEffect(() => { setCopied(false); }, [gkey]);
   const flash = (k) => {
     setFlashKey(k);
     clearTimeout(flashTimer.current);
@@ -124,7 +192,7 @@ export default function LeadCard({ lead, env, defaultAccount }) {
   const blockedByCheck = needsCheck && !verified && stage?.key === 'pitch';
   const atLimit = isNew && newBy[account] >= cfg.cap;
   const blocked = blockedByCheck
-    ? 'Tick "I opened it and confirmed the problem" before marking this sent.'
+    ? 'Tick the confirm box first.'
     : atLimit
       ? `Account ${account} has reached its daily limit of ${cfg.cap} new DMs. Switch to the other account.`
       : '';
@@ -139,23 +207,24 @@ export default function LeadCard({ lead, env, defaultAccount }) {
 
   const copy = () => {
     copyText(text).then((ok) => {
-      if (ok) flash('copy');
-      else actions.toast('Copy failed. Select the text and copy manually.', { kind: 'bad' });
+      if (ok) { flash('copy'); setCopied(true); } else actions.toast('Copy failed. Select the text and copy it by hand.', { kind: 'bad' });
     });
   };
   const copyOpen = (ch) => () => {
     // Runs inside the <a> click, so the copy happens in the same user gesture that opens the tab.
     setChannel(ch);
+    setCopied(true);
     copyText(text).then((ok) => {
-      if (!ok) actions.toast('Copy failed. Select the text and copy manually.', { kind: 'bad' });
+      if (!ok) actions.toast('Copy failed. Select the text and copy it by hand.', { kind: 'bad' });
     });
     actions.toast(`Copied. Paste it into ${ch === 'ig' ? 'Instagram' : 'Facebook'}, send it, then press Mark sent.`);
   };
   const copyEmail = () => {
     setChannel('email');
     copyText(toEmailText(stage, eff, cfg, text)).then((ok) => {
-      if (!ok) return actions.toast('Copy failed. Select the text and copy manually.', { kind: 'bad' });
+      if (!ok) return actions.toast('Copy failed. Select the text and copy it by hand.', { kind: 'bad' });
       flash('email');
+      setCopied(true);
       if (!String(cfg.address || '').trim()) {
         return actions.toast('Copied, but your postal address is empty. Add it in Settings before sending marketing email.', { kind: 'warn', ms: 6000 });
       }
@@ -163,14 +232,24 @@ export default function LeadCard({ lead, env, defaultAccount }) {
     });
   };
 
+  // "C" in the queue copies the message of the lead on screen (App dispatches the event).
+  const copyRef = useRef(copy);
+  copyRef.current = copy;
+  useEffect(() => {
+    if (!active || !showMessage) return undefined;
+    const onCopyKey = () => copyRef.current();
+    window.addEventListener('outreach:copy', onCopyKey);
+    return () => window.removeEventListener('outreach:copy', onCopyKey);
+  }, [active, showMessage]);
+
   const saveLink = () => {
-    const v = linkDraft.trim();
-    if (v === (lead.demoLink || '')) return;
-    if (v && !hasLink(v)) {
+    const link = linkDraft.trim();
+    if (link === (lead.demoLink || '')) return;
+    if (link && !hasLink(link)) {
       actions.toast('The demo link must start with http:// or https://', { kind: 'warn' });
       return;
     }
-    actions.patch(lead.id, { demoLink: v }, undefined, { quiet: true });
+    actions.patch(lead.id, { demoLink: link }, undefined, { quiet: true });
   };
 
   const menuItems = [];
@@ -181,45 +260,43 @@ export default function LeadCard({ lead, env, defaultAccount }) {
   if (lead.status !== 'lost') menuItems.push({ label: 'Not interested', run: () => actions.patch(lead.id, { status: 'lost' }, 'Marked not interested') });
   menuItems.push({ label: 'Edit lead', run: () => actions.edit(lead) });
 
-  const dueBadge = due
-    ? due.overdueDays > 0
-      ? <span className="badge bad">{due.overdueDays}d overdue</span>
-      : due.overdueDays === 0
-        ? <span className="badge warn">Due today</span>
-        : <span className="badge">Due {fmtShortDate(due.due)}</span>
-    : null;
+  // Exactly one primary button per state: copy first, then Mark sent once the message has been copied.
+  const primary = !showMessage ? null : copied ? 'mark' : lead.ig ? 'ig' : lead.fb ? 'fb' : 'copy';
+  const cls = (key) => `btn ${primary === key ? 'btn-primary' : 'btn-secondary'}`;
 
   const accName = account === 'A' ? cfg.accA : cfg.accB;
   const sub = [lead.city, lead.owner].filter(Boolean).join(' · ');
+  const stepsSent = lead.step;
 
   return (
-    <article className={`card ${lead.status === 'replied' ? 'replied' : ''}`} aria-label={lead.name}>
-      <div className="card-head">
-        <div>
-          <h3 className="biz">{lead.name}</h3>
-          {sub && <div className="sub">{sub}</div>}
+    <article className={`detail ${lead.status === 'replied' ? 'is-reply' : ''}`} aria-label={`Lead: ${lead.name}`}>
+      <header className="detail-head">
+        <div style={{ minWidth: 0 }}>
+          <h2>{lead.name}</h2>
+          {sub && <p className="sub">{sub}</p>}
           <div className="stepline">
             {lead.status !== 'replied' && ['queued', 'active', 'done'].includes(lead.status) && (
-              <span className="pips" role="img" aria-label={`${lead.step} of 4 messages sent`}>
+              <span className="pips" role="img" aria-label={`${stepsSent} of 4 messages sent`}>
                 {[0, 1, 2, 3].map((i) => (
-                  <i key={i} className={`pip ${i < lead.step ? 'on' : i === lead.step && lead.status !== 'done' ? 'next' : ''}`} />
+                  <i key={i} className={`pip ${i < stepsSent ? 'on' : i === stepsSent && lead.status !== 'done' ? 'next' : ''}`} />
                 ))}
               </span>
             )}
-            <span className="step">{stage ? stage.label : `Status: ${lead.status}`}</span>
+            <span className="step-text">{stage ? stage.label : `Status: ${lead.status}`}</span>
           </div>
         </div>
         <div className="badges">
-          <span className={`badge prob-${lead.problem}`}>{PROBLEMS[lead.problem] || lead.problem}</span>
-          {(lead.account || isNew) && <span className={`badge acc-${account}`}>{account}{accName ? ` · ${accName}` : ''}</span>}
-          {dueBadge}
-          {needsCheck && !verified && <span className="badge warn">⚠ Unverified</span>}
-          {lead.status === 'replied' && <span className="badge ok">Replied</span>}
+          {(lead.account || isNew) && <span className={`tag tag-${account}`}>{account}{accName ? ` · ${accName}` : ''}</span>}
+          {due && <span className={`tag ${due.tone === 'bad' ? 'tag-bad' : due.tone === 'warn' ? 'tag-warn' : ''}`}>{due.text}</span>}
+          {needsCheck && !verified && <span className="tag tag-warn"><Icon as={I.Warning} size="sm" /> Unverified</span>}
+          {lead.status === 'replied' && <span className="tag tag-info">Replied</span>}
         </div>
-      </div>
+      </header>
+
+      <AboutStrip lead={lead} actions={actions} />
 
       {needsCheck && (
-        <div className={`verify ${verified ? '' : 'unverified'}`}>
+        <div className={`verify ${verified ? '' : 'is-open'}`}>
           <label className="check">
             <input
               type="checkbox"
@@ -232,19 +309,17 @@ export default function LeadCard({ lead, env, defaultAccount }) {
             />
             <span>I opened it and confirmed the problem</span>
           </label>
-          {lead.site
-            ? <a className="btn small" href={lead.site} target="_blank" rel="noopener noreferrer" style={{ justifySelf: 'start' }}>Open site ↗</a>
-            : <span className="hint">No site address saved. Add one with Edit lead.</span>}
+          {!lead.site && <span className="hint">No site address saved. Add one with More, then Edit lead.</span>}
         </div>
       )}
 
       {lead.status === 'replied' && (
         <label className="field">
-          <span>Demo link (paste it here to switch to the demo-delivery message)</span>
+          <span className="label">Demo link (paste it here to switch to the demo-delivery message)</span>
           <input
             type="url"
             inputMode="url"
-            placeholder="https://…"
+            placeholder="https://"
             value={linkDraft}
             onChange={(e) => setLinkDraft(e.target.value)}
             onBlur={saveLink}
@@ -254,22 +329,26 @@ export default function LeadCard({ lead, env, defaultAccount }) {
       )}
 
       {stage?.key === 'replyWait' && (
-        <div className="notice">Photo-permission message sent. Once they agree, build the private demo and paste its link above to get the delivery message.</div>
+        <div className="notice" role="note">
+          <Icon as={I.Info} />
+          <div>Photo-permission message sent. Once they agree, build the private demo and paste its link above to get the delivery message.</div>
+        </div>
       )}
 
       {isNew && (
-        <div className="actions">
+        <div className="account-row">
           <span className="label">Send from</span>
-          <div className="toggle" role="group" aria-label="Account">
+          <div className="seg" role="group" aria-label="Account">
             {['A', 'B'].map((a) => (
               <button
                 key={a}
-                className={a.toLowerCase()}
                 aria-pressed={account === a}
                 disabled={busy}
                 onClick={() => account !== a && actions.patch(lead.id, { account: a })}
               >
-                {a} <span className="mono" style={{ fontWeight: 400 }}>{newBy[a]}/{cfg.cap}</span>
+                <span className={`acct ${a === 'B' ? 'acct-B' : ''}`} aria-hidden="true">{a}</span>
+                <span className="sr-only">Account </span>{a}
+                <span className="num" style={{ fontWeight: 500 }}>{newBy[a]}/{cfg.cap}</span>
               </button>
             ))}
           </div>
@@ -279,103 +358,109 @@ export default function LeadCard({ lead, env, defaultAccount }) {
       {showMessage && (
         <>
           <div className="genbar">
-            <span className={`badge ${v.shown.source === 'personalized' ? 'ok' : ''}`}>
+            <span className={`tag ${v.shown.source === 'personalized' ? 'tag-ok' : ''}`}>
               {v.shown.source === 'personalized' ? 'Personalized' : 'Template'}
             </span>
             <div className="versions" role="group" aria-label="Previous versions">
-              <span className="label">Versions</span>
-              <button className="btn small icon" aria-label="Previous version" disabled={v.pos === 0 || generating} onClick={() => onGoto(v.pos - 1)}>◀</button>
-              <span className="mono" aria-live="polite">{v.pos + 1}/{v.all.length}</span>
-              <button className="btn small icon" aria-label="Next version" disabled={v.pos >= v.all.length - 1 || generating} onClick={() => onGoto(v.pos + 1)}>▶</button>
+              <button className="btn btn-secondary btn-icon" aria-label="Previous version" disabled={v.pos === 0 || generating} onClick={() => onGoto(v.pos - 1)}>
+                <Icon as={I.CaretLeft} />
+              </button>
+              <span className="num" aria-live="polite">{v.pos + 1}/{v.all.length}</span>
+              <button className="btn btn-secondary btn-icon" aria-label="Next version" disabled={v.pos >= v.all.length - 1 || generating} onClick={() => onGoto(v.pos + 1)}>
+                <Icon as={I.CaretRight} />
+              </button>
             </div>
             <span className="grow" />
-            <button className="btn small" onClick={onRegenerate} disabled={generating || !env.llm.configured}>
-              {generating ? <><span className="spinner" aria-hidden="true" />Writing…</> : 'Regenerate'}
+            <button className="btn btn-secondary" onClick={onRegenerate} disabled={generating || !env.llm.configured}>
+              {generating ? <><span className="spinner" aria-hidden="true" /> Writing</> : <><Icon as={I.Sparkle} /> Regenerate</>}
             </button>
           </div>
-          <input
-            type="text"
-            className="hint-input"
-            placeholder={'Hint, e.g. "shorter" or "no phones"'}
-            aria-label="Hint for regenerating"
-            maxLength={200}
-            value={hint}
-            disabled={generating}
-            onChange={(e) => setHint(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && env.llm.configured && !generating) onRegenerate(); }}
-          />
-          {!env.llm.configured && (
-            <p className="hint">AI personalization is off, so this is the built-in template. See Settings to turn it on.</p>
-          )}
-          {!lead.hook && !lead.note && (
-            <p className="hint">The more specific your note, the more personal the message. Add a hook or note with Edit lead.</p>
-          )}
+          <div className="hint-row">
+            <input
+              type="text"
+              aria-label="Hint for regenerating"
+              placeholder={'Hint, e.g. "shorter" or "no phones"'}
+              maxLength={200}
+              value={hint}
+              disabled={generating}
+              onChange={(e) => setHint(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && env.llm.configured && !generating) onRegenerate(); }}
+            />
+            {!env.llm.configured && (
+              <p className="inline-note"><Icon as={I.Info} /><span>AI personalization is off, so this is the built-in template. Settings explains how to turn it on.</span></p>
+            )}
+          </div>
+
           {confirm && (
-            <div className="notice warn" role="alertdialog" aria-label="Replace edited text?">
-              <p>You edited this message. Replace it on screen? Your edit is saved as its own version, so you can come back to it.</p>
-              <div className="actions" style={{ marginTop: 8 }}>
-                <button className="btn small" onClick={confirmReplace}>Replace</button>
-                <button className="btn small" onClick={() => setConfirm(null)}>Keep mine</button>
+            <div className="notice notice-warn" role="alertdialog" aria-label="Replace edited text?">
+              <Icon as={I.Warning} />
+              <div>
+                <p>You edited this message. Replace it on screen? Your edit is saved as its own version, so you can come back to it.</p>
+                <div className="actions" style={{ marginTop: 'var(--s-3)' }}>
+                  <button className="btn btn-secondary btn-sm" onClick={confirmReplace}>Replace</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(null)}>Keep mine</button>
+                </div>
               </div>
             </div>
           )}
 
-          <label className="field">
-            <span className="sr-only">Message to {lead.name}</span>
+          <div className="msg-wrap">
+            <label className="sr-only" htmlFor={`msg-${lead.id}`}>Message to {lead.name}</label>
             <textarea
+              id={`msg-${lead.id}`}
               className={`msg ${generating ? 'busy' : ''}`}
-              aria-label={`Message to ${lead.name}`}
               aria-busy={generating}
               value={text}
-              rows={Math.min(16, Math.max(7, Math.ceil(text.length / 52) + 2))}
+              rows={Math.min(16, Math.max(8, Math.ceil(text.length / 64) + 2))}
               onChange={(e) => onType(e.target.value)}
               readOnly={generating}
               spellCheck
             />
-          </label>
-          {edited && (
-            <div className="actions">
-              <span className="hint">Your edits are kept until you mark it sent.</span>
-              <button className="btn small ghost" onClick={resetText}>Reset text</button>
+            {edited && (
+              <div className="actions">
+                <span className="hint">Your edits are kept until you mark it sent.</span>
+                <button className="btn btn-quiet btn-sm" onClick={resetText}>Reset text</button>
+              </div>
+            )}
+            {hasPlaceholder(text) && (
+              <p className="reason"><Icon as={I.Warning} /><span>The message still contains [placeholder] text. Fix it above or in Settings before sending.</span></p>
+            )}
+          </div>
+
+          <div className="stack-sm">
+            <div className="actions-main">
+              {lead.ig && (
+                <a className={cls('ig')} href={lead.ig} target="_blank" rel="noopener noreferrer" onClick={copyOpen('ig')}>
+                  <Icon as={I.InstagramLogo} /> Copy + open Instagram <Icon as={I.ArrowSquareOut} size="sm" />
+                </a>
+              )}
+              {lead.fb && (
+                <a className={cls('fb')} href={lead.fb} target="_blank" rel="noopener noreferrer" onClick={copyOpen('fb')}>
+                  <Icon as={I.FacebookLogo} /> Copy + open Facebook <Icon as={I.ArrowSquareOut} size="sm" />
+                </a>
+              )}
+              <button className={flashKey === 'copy' ? 'btn btn-flash' : cls('copy')} onClick={copy}>
+                <Icon as={flashKey === 'copy' ? I.Check : I.CopySimple} /> {flashKey === 'copy' ? 'Copied' : 'Copy'}
+              </button>
+              <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} onClick={copyEmail}>
+                <Icon as={flashKey === 'email' ? I.Check : I.EnvelopeSimple} /> {flashKey === 'email' ? 'Copied' : 'Copy as email'}
+              </button>
             </div>
-          )}
-          {hasPlaceholder(text) && (
-            <p className="hint warn">The message still contains [placeholder] text. Fix it above or in Settings before sending.</p>
-          )}
-
-          <ol className="flow" aria-label="Steps">
-            <li><i>1</i>Copy + open</li>
-            <li><i>2</i>Paste and send it yourself</li>
-            <li><i>3</i>Mark sent</li>
-          </ol>
-
-          <div className="actions">
-            {lead.ig && (
-              <a className="btn primary cta" href={lead.ig} target="_blank" rel="noopener noreferrer" onClick={copyOpen('ig')}>
-                Copy + open Instagram
-              </a>
-            )}
-            {lead.fb && (
-              <a className="btn primary cta" href={lead.fb} target="_blank" rel="noopener noreferrer" onClick={copyOpen('fb')}>
-                Copy + open Facebook
-              </a>
-            )}
+            {lead.email && <p className="hint">Email: <span className="num">{lead.email}</span></p>}
+            <p className="hint">
+              {copied
+                ? 'Sent it? Press Mark sent to record it and move on.'
+                : 'Copy the message, paste it and send it yourself, then come back and press Mark sent.'}
+            </p>
           </div>
-          <div className="secondary-actions">
-            <button className={`btn ${flashKey === 'copy' ? 'flash' : lead.ig || lead.fb ? '' : 'primary'}`} onClick={copy}>
-              {flashKey === 'copy' ? 'Copied ✓' : 'Copy'}
-            </button>
-            <button className={`btn ${flashKey === 'email' ? 'flash' : ''}`} onClick={copyEmail}>
-              {flashKey === 'email' ? 'Copied ✓' : 'Copy as email'}
-            </button>
-          </div>
-          {lead.email && <div className="hint">Email: <span className="mono">{lead.email}</span></div>}
 
-          <div className="actions">
-            <button className="btn ok big" disabled={!!blocked || busy} onClick={() => send(channel)}>Mark sent</button>
-            <label className="actions" style={{ gap: 6 }}>
-              <span className="hint">via</span>
-              <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Channel used" style={{ width: 'auto', minHeight: 38 }}>
+          <div className="mark-row">
+            <button className={cls('mark')} disabled={!!blocked || busy} onClick={() => send(channel)}>
+              <Icon as={I.CheckCircle} /> Mark sent
+            </button>
+            <label>
+              via
+              <select value={channel} onChange={(e) => setChannel(e.target.value)} aria-label="Channel used">
                 <option value="ig">Instagram</option>
                 <option value="fb">Facebook</option>
                 <option value="email">Email</option>
@@ -384,7 +469,7 @@ export default function LeadCard({ lead, env, defaultAccount }) {
             <span className="grow" />
             <MoreMenu items={menuItems} />
           </div>
-          {blocked && <p className="hint warn">{blocked}</p>}
+          {blocked && <p className="reason"><Icon as={I.Warning} /><span>{blocked}</span></p>}
         </>
       )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { I, Icon } from './icons.jsx';
 import { PROBLEMS } from '../lib/messages.js';
 import { IMPORT_STATUSES, cellText, parsePaste, resolveProgress } from '../lib/importer.js';
 import { nextAction } from '../lib/schedule.js';
@@ -19,7 +20,12 @@ function Modal({ title, onClose, children }) {
       onClick={(e) => { if (e.target === ref.current) ref.current.close(); }}
     >
       <div className="modal-body">
-        <h2>{title}</h2>
+        <div className="modal-head">
+          <h2>{title}</h2>
+          <button type="button" className="btn btn-quiet btn-icon" aria-label={`Close ${title}`} onClick={() => ref.current?.close()}>
+            <Icon as={I.X} />
+          </button>
+        </div>
         {children}
       </div>
     </dialog>
@@ -70,7 +76,7 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
 
   return (
     <Modal title={editing ? 'Edit lead' : 'Add lead'} onClose={onClose}>
-      <form onSubmit={submit} ref={ref} className="section" noValidate>
+      <form onSubmit={submit} ref={ref} className="stack" noValidate>
         <div className="form-grid">
           <div className="wide">{text('name', 'Business name *', 'text', { autoFocus: true, required: true })}</div>
           {text('city', 'City')}
@@ -125,12 +131,12 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
             </>
           )}
         </div>
-        {err && <div className="notice bad" role="alert">{err}</div>}
+        {err && <div className="notice notice-bad" role="alert"><Icon as={I.XCircle} /><div>{err}</div></div>}
         <div className="modal-actions">
           {editing && (
             <button
               type="button"
-              className="btn danger"
+              className="btn btn-danger"
               onClick={async () => {
                 if (!window.confirm(`Delete ${lead.name}? This removes the row from your sheet.`)) return;
                 try { await onDelete(lead); close(); } catch (ex) { setErr(ex.message); }
@@ -140,8 +146,8 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
             </button>
           )}
           <span style={{ flex: 1 }} />
-          <button type="button" className="btn" onClick={close}>Cancel</button>
-          <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save' : 'Add lead'}</button>
+          <button type="button" className="btn btn-secondary" onClick={close}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save' : 'Add lead'}</button>
         </div>
       </form>
     </Modal>
@@ -210,7 +216,7 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
 
   return (
     <Modal title="Import leads" onClose={onClose}>
-      <div className="section" ref={ref}>
+      <div className="stack" ref={ref}>
         <p className="hint">
           Paste rows copied from your sheet (tab-separated). Columns in order:
           {' '}<b>business, website, Instagram, Facebook, note, email</b>, then optionally, for leads you already messaged:
@@ -224,7 +230,7 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
           placeholder={EXAMPLE}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          className="mono"
+          className="paste"
           style={{ fontSize: 13 }}
           autoFocus
         />
@@ -255,7 +261,7 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
                 <div className={`imp-row ${it.state}`} key={`${it.row.name}-${it.i}`}>
                   <div className="imp-head">
                     <b>{it.row.name}{it.row.email ? ` · ${it.row.email}` : ''}</b>
-                    <span className={`badge prob-${it.row.problem}`}>{it.state === 'dup' ? 'duplicate' : PROBLEMS[it.row.problem]}</span>
+                    <span className={`tag tag-${it.row.problem}`}>{it.state === 'dup' ? 'duplicate' : PROBLEMS[it.row.problem]}</span>
                   </div>
 
                   {it.state !== 'dup' && (
@@ -327,10 +333,10 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
           </>
         )}
         {items.length > 200 && <p className="hint">Showing the first 200 rows of {items.length}.</p>}
-        {err && <div className="notice bad" role="alert">{err}</div>}
+        {err && <div className="notice notice-bad" role="alert"><Icon as={I.XCircle} /><div>{err}</div></div>}
         <div className="modal-actions">
-          <button className="btn" onClick={close}>Cancel</button>
-          <button className="btn primary" disabled={busy || ready.length === 0} onClick={go}>
+          <button className="btn btn-secondary" onClick={close}>Cancel</button>
+          <button className="btn btn-primary" disabled={busy || ready.length === 0} onClick={go}>
             {busy ? 'Importing…' : `Import ${ready.length} lead${ready.length === 1 ? '' : 's'}`}
           </button>
         </div>
