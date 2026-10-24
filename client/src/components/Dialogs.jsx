@@ -32,7 +32,7 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-const BLANK = { name: '', city: '', owner: '', ig: '', fb: '', email: '', site: '', problem: 'nosite', hook: '', note: '' };
+const BLANK = { name: '', city: '', owner: '', ig: '', fb: '', email: '', site: '', problem: 'nosite', hook: '', note: '', account: '' };
 
 /** Add (lead = null) or edit a lead. onSave must throw to keep the dialog open. */
 export function LeadDialog({ lead, onSave, onDelete, onClose }) {
@@ -96,6 +96,14 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
             <span>Note</span>
             <textarea rows={2} value={f.note ?? ''} onChange={set('note')} />
           </label>
+          <label className="field">
+            <span>Send from account</span>
+            <select value={f.account} onChange={set('account')}>
+              <option value="">Automatic (whichever has room)</option>
+              <option value="A">Account A</option>
+              <option value="B">Account B</option>
+            </select>
+          </label>
           {editing && (
             <>
               <label className="field">
@@ -114,14 +122,6 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
               <label className="field">
                 <span>Messages sent in this track (0-4)</span>
                 <input type="number" min={0} max={4} value={f.step} onChange={set('step')} />
-              </label>
-              <label className="field">
-                <span>Account</span>
-                <select value={f.account} onChange={set('account')}>
-                  <option value="">Not set</option>
-                  <option>A</option>
-                  <option>B</option>
-                </select>
               </label>
               <div className="wide">{text('demoLink', 'Demo link', 'text', { inputMode: 'url' })}</div>
               <label className="check wide">

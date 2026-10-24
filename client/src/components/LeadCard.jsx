@@ -109,6 +109,11 @@ function AboutStrip({ lead, actions }) {
   );
 }
 
+// Personalized messages are written automatically the first time a lead is opened. One attempt per message
+// step, so a failure never turns into a request loop; the card then offers a manual retry.
+const autoTried = new Set();
+const inFlight = new Map();
+
 export default function LeadCard({ lead, env, defaultAccount, active = false }) {
   const { cfg, busy, newBy, actions } = env;
 
@@ -161,21 +166,53 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   const [confirm, setConfirm] = useState(null);
   useEffect(() => { setConfirm(null); }, [gkey]);
 
+  const [aiError, setAiError] = useState('');
+  useEffect(() => { setAiError(''); }, [gkey]);
+
   const runRegenerate = async () => {
     setConfirm(null);
     stashEdit(gkey, template);
     setGenerating(true);
+    setAiError('');
+    const job = requestVariant({ lead: eff, stage, hint: hint.trim(), template });
+    inFlight.set(gkey, job);
     try {
-      const res = await requestVariant({ lead: eff, stage, hint: hint.trim(), template });
+      const res = await job;
       if (res.source === 'template') {
-        actions.toast('The AI draft did not pass the safety checks, so the template is shown. Try Regenerate again.', { kind: 'warn', ms: 6000 });
+        const msg = 'The AI draft did not pass the safety checks. Try again.';
+        setAiError(msg);
+        actions.toast(msg, { kind: 'warn', ms: 6000 });
       }
     } catch (err) {
-      actions.toast(errorMessage(err), { kind: 'bad', ms: 6000 });
+      const msg = errorMessage(err);
+      setAiError(msg);
+      actions.toast(msg, { kind: 'bad', ms: 6000 });
     } finally {
+      inFlight.delete(gkey);
       setGenerating(false);
     }
   };
+
+  // Write the personalized message as soon as the lead is on screen (and AI is configured).
+  const needAuto = !!(
+    active && showMessage && env.llm.configured && gkey && entry.draft === null
+    && !entry.versions.some((x) => x.source === 'personalized')
+    && !(stage?.key === 'demo' && lead.demoLink !== eff.demoLink)
+  );
+  useEffect(() => {
+    if (!needAuto) return undefined;
+    if (inFlight.has(gkey)) {
+      let live = true;
+      setGenerating(true);
+      inFlight.get(gkey).catch(() => {}).finally(() => { if (live) setGenerating(false); });
+      return () => { live = false; };
+    }
+    if (autoTried.has(gkey)) return undefined;
+    autoTried.add(gkey);
+    runRegenerate();
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gkey, needAuto]);
   const onRegenerate = () => (edited ? setConfirm({ type: 'regen' }) : runRegenerate());
   const onGoto = (target) => (edited ? setConfirm({ type: 'goto', target }) : goTo(gkey, template, target));
   const confirmReplace = () => {
@@ -188,6 +225,11 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
     }
   };
 
+  // With AI on, only a personalized message (or your own edit of it) can be copied or marked sent.
+  const awaitingAI = env.llm.configured && showMessage && v.shown.source !== 'personalized' && !edited;
+  // True from the first render of a lead that is about to be written, so the template never flashes.
+  const writing = generating || (needAuto && !autoTried.has(gkey));
+
   const needsCheck = lead.problem === 'down' || lead.problem === 'parked';
   const blockedByCheck = needsCheck && !verified && stage?.key === 'pitch';
   const atLimit = isNew && newBy[account] >= cfg.cap;
@@ -195,7 +237,9 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
     ? 'Tick the confirm box first.'
     : atLimit
       ? `Account ${account} has reached its daily limit of ${cfg.cap} new DMs. Switch to the other account.`
-      : '';
+      : awaitingAI
+        ? 'Waiting for the personalized message.'
+        : '';
 
   const send = (ch) => {
     if (blocked) {
@@ -206,11 +250,20 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   };
 
   const copy = () => {
+    if (awaitingAI) {
+      actions.toast('The personalized message is not ready yet.', { kind: 'warn' });
+      return;
+    }
     copyText(text).then((ok) => {
       if (ok) { flash('copy'); setCopied(true); } else actions.toast('Copy failed. Select the text and copy it by hand.', { kind: 'bad' });
     });
   };
-  const copyOpen = (ch) => () => {
+  const copyOpen = (ch) => (e) => {
+    if (awaitingAI) {
+      e.preventDefault();
+      actions.toast('The personalized message is not ready yet.', { kind: 'warn' });
+      return;
+    }
     // Runs inside the <a> click, so the copy happens in the same user gesture that opens the tab.
     setChannel(ch);
     setCopied(true);
@@ -220,6 +273,10 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
     actions.toast(`Copied. Paste it into ${ch === 'ig' ? 'Instagram' : 'Facebook'}, send it, then press Mark sent.`);
   };
   const copyEmail = () => {
+    if (awaitingAI) {
+      actions.toast('The personalized message is not ready yet.', { kind: 'warn' });
+      return;
+    }
     setChannel('email');
     copyText(toEmailText(stage, eff, cfg, text)).then((ok) => {
       if (!ok) return actions.toast('Copy failed. Select the text and copy it by hand.', { kind: 'bad' });
@@ -262,7 +319,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
 
   // Exactly one primary button per state: copy first, then Mark sent once the message has been copied.
   const primary = !showMessage ? null : copied ? 'mark' : lead.ig ? 'ig' : lead.fb ? 'fb' : 'copy';
-  const cls = (key) => `btn ${primary === key ? 'btn-primary' : 'btn-secondary'}`;
+  const cls = (key) => `btn ${primary === key && !awaitingAI ? 'btn-primary' : 'btn-secondary'}`;
 
   const accName = account === 'A' ? cfg.accA : cfg.accB;
   const sub = [lead.city, lead.owner].filter(Boolean).join(' · ');
@@ -335,23 +392,27 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
         </div>
       )}
 
-      {isNew && (
+      {showMessage && (
         <div className="account-row">
-          <span className="label">Send from</span>
-          <div className="seg" role="group" aria-label="Account">
-            {['A', 'B'].map((a) => (
-              <button
-                key={a}
-                aria-pressed={account === a}
-                disabled={busy}
-                onClick={() => account !== a && actions.patch(lead.id, { account: a })}
-              >
-                <span className={`acct ${a === 'B' ? 'acct-B' : ''}`} aria-hidden="true">{a}</span>
-                <span className="sr-only">Account </span>{a}
-                <span className="num" style={{ fontWeight: 500 }}>{newBy[a]}/{cfg.cap}</span>
-              </button>
-            ))}
-          </div>
+          <span className="label" id={`acct-${lead.id}`}>Send from account</span>
+          {isNew ? (
+            <div className="seg" role="group" aria-labelledby={`acct-${lead.id}`}>
+              {['A', 'B'].map((a) => (
+                <button
+                  key={a}
+                  aria-pressed={account === a}
+                  disabled={busy}
+                  onClick={() => account !== a && actions.patch(lead.id, { account: a })}
+                >
+                  <span className={`acct ${a === 'B' ? 'acct-B' : ''}`} aria-hidden="true">{a}</span>
+                  <span className="sr-only">Account </span>{(a === 'A' ? cfg.accA : cfg.accB) || a}
+                  <span className="num" style={{ fontWeight: 500 }}>{newBy[a]}/{cfg.cap}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="tag">{account}{accName ? ` · ${accName}` : ''} (follow-ups stay on the account that sent the first message)</span>
+          )}
         </div>
       )}
 
@@ -391,6 +452,18 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
             )}
           </div>
 
+          {awaitingAI && !writing && (
+            <div className="notice notice-warn" role="alert">
+              <Icon as={I.Warning} />
+              <div>
+                <p>{aiError || 'No personalized message yet.'} Copy and Mark sent unlock once it is written, or after you edit the text yourself.</p>
+                <div className="actions" style={{ marginTop: 'var(--s-3)' }}>
+                  <button className="btn btn-primary btn-sm" onClick={runRegenerate}><Icon as={I.Sparkle} /> Write personalized message</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {confirm && (
             <div className="notice notice-warn" role="alertdialog" aria-label="Replace edited text?">
               <Icon as={I.Warning} />
@@ -408,12 +481,13 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
             <label className="sr-only" htmlFor={`msg-${lead.id}`}>Message to {lead.name}</label>
             <textarea
               id={`msg-${lead.id}`}
-              className={`msg ${generating ? 'busy' : ''}`}
+              className={`msg ${writing ? 'busy' : ''}`}
               aria-busy={generating}
-              value={text}
+              value={awaitingAI ? '' : text}
+              placeholder={awaitingAI ? (writing ? `Writing a personalized message for ${lead.name}…` : 'No personalized message yet. Write it above, or type your own.') : undefined}
               rows={Math.min(16, Math.max(8, Math.ceil(text.length / 64) + 2))}
               onChange={(e) => onType(e.target.value)}
-              readOnly={generating}
+              readOnly={writing}
               spellCheck
             />
             {edited && (
@@ -430,19 +504,19 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
           <div className="stack-sm">
             <div className="actions-main">
               {lead.ig && (
-                <a className={cls('ig')} href={lead.ig} target="_blank" rel="noopener noreferrer" onClick={copyOpen('ig')}>
+                <a className={cls('ig')} aria-disabled={awaitingAI || undefined} href={lead.ig} target="_blank" rel="noopener noreferrer" onClick={copyOpen('ig')}>
                   <Icon as={I.InstagramLogo} /> Copy + open Instagram <Icon as={I.ArrowSquareOut} size="sm" />
                 </a>
               )}
               {lead.fb && (
-                <a className={cls('fb')} href={lead.fb} target="_blank" rel="noopener noreferrer" onClick={copyOpen('fb')}>
+                <a className={cls('fb')} aria-disabled={awaitingAI || undefined} href={lead.fb} target="_blank" rel="noopener noreferrer" onClick={copyOpen('fb')}>
                   <Icon as={I.FacebookLogo} /> Copy + open Facebook <Icon as={I.ArrowSquareOut} size="sm" />
                 </a>
               )}
-              <button className={flashKey === 'copy' ? 'btn btn-flash' : cls('copy')} onClick={copy}>
+              <button className={flashKey === 'copy' ? 'btn btn-flash' : cls('copy')} aria-disabled={awaitingAI || undefined} onClick={copy}>
                 <Icon as={flashKey === 'copy' ? I.Check : I.CopySimple} /> {flashKey === 'copy' ? 'Copied' : 'Copy'}
               </button>
-              <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} onClick={copyEmail}>
+              <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} aria-disabled={awaitingAI || undefined} onClick={copyEmail}>
                 <Icon as={flashKey === 'email' ? I.Check : I.EnvelopeSimple} /> {flashKey === 'email' ? 'Copied' : 'Copy as email'}
               </button>
             </div>

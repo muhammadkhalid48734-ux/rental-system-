@@ -151,9 +151,13 @@ There is deliberately no shortcut for **Mark sent**; it is only ever a click. Th
 
 Fonts (Plus Jakarta Sans, Inter) and icons (Phosphor) are bundled with the app, so the Content-Security-Policy allows only `'self'` for styles and fonts and nothing is loaded from a third party.
 
+### Accounts
+
+Every new lead is sent from Account A or B. Choose it in **Add lead** (**Send from account**; leave it on Automatic to use whichever account has room) or on the lead's card (**Send from account**, with each account's name and `sent/limit` count). A lead's follow-ups always stay on the account that sent the first message.
+
 ### Personalized messages
 
-Each card starts with the built-in **Template** and can be rewritten with **Regenerate**:
+With a Groq key set, the personalized message is written automatically the first time a lead is opened, and **Copy**, **Copy + open** and **Mark sent** stay locked until it is ready (or until you type your own text). If the AI is unavailable, the card says so and offers **Write personalized message** to retry. Without a key, only the built-in **Template** exists. Each card can be rewritten with **Regenerate**:
 
 - Optional **Hint** ("shorter", "don't mention phones"). It can change tone or length but never the rules.
 - **Versions ◀ ▶** keep every draft, including your own edits, so nothing is lost. Replacing text you edited needs an in-page confirmation, and your edit is saved as a version first.

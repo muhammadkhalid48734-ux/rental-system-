@@ -146,3 +146,11 @@ test('animations only touch transform and opacity', () => {
   const trans = [...css.matchAll(/transition:\s*([^;]+);/g)].map((m) => m[1]);
   for (const t of trans) assert.ok(/^(opacity|transform)\b/.test(t.trim()), `transition on a layout/colour property: ${t}`);
 });
+
+test('with AI configured the card writes the personalized message itself and never offers the bare template for sending', () => {
+  const card = fs.readFileSync(path.join(root, 'client/src/components/LeadCard.jsx'), 'utf8');
+  assert.match(card, /needAuto/);
+  assert.match(card, /autoTried/);
+  assert.match(card, /awaitingAI/);
+  assert.match(card, /Send from account/);
+});
