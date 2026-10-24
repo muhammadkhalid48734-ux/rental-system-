@@ -56,7 +56,7 @@ export async function generate({ system, user }, deps = {}) {
     model,
     messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
     temperature: 0.9,
-    max_completion_tokens: 1500,
+    max_completion_tokens: 900, // a DM is about 250 tokens; Groq counts the requested maximum against the per-minute token limit
     // gpt-oss models spend tokens on hidden reasoning; keep it short so the answer is not cut off.
     ...(/gpt-oss/i.test(model) ? { reasoning_effort: 'low' } : {}),
   };

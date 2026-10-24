@@ -208,9 +208,13 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
       return () => { live = false; };
     }
     if (autoTried.has(gkey)) return undefined;
-    autoTried.add(gkey);
-    runRegenerate();
-    return undefined;
+    // Short delay: stepping through the queue with the arrow keys must not fire a request for every lead passed.
+    const timer = setTimeout(() => {
+      if (autoTried.has(gkey)) return;
+      autoTried.add(gkey);
+      runRegenerate();
+    }, 700);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gkey, needAuto]);
   const onRegenerate = () => (edited ? setConfirm({ type: 'regen' }) : runRegenerate());
