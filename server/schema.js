@@ -16,6 +16,8 @@ export const CONFIG_DEFAULTS = {
   yourName: '',
   studio: '',
   address: '',
+  // Finishes "…send it over ___". Used in the first message, the AI prompt and the quick replies.
+  demoTurnaround: 'usually within the hour during our support hours, otherwise by the next morning (US time)',
   // Demo packages. Prices are plain numbers (USD); an empty monthly means "no monthly fee".
   pkg1Name: 'Website',
   pkg1Setup: '247',
@@ -140,6 +142,13 @@ export function cleanConfig(input) {
     const ok = parts.length === 3 && parts.every((p) => /^\d+$/.test(p) && Number(p) >= 1 && Number(p) <= 60);
     if (!ok) throw new HttpError(400, 'gaps must be three day counts like "2,3,4"');
     out.gaps = parts.join(',');
+  }
+  if ('demoTurnaround' in out) {
+    // One line only: it is pasted into messages and into the AI prompt.
+    out.demoTurnaround = out.demoTurnaround.replace(/\s+/g, ' ').trim();
+    if (!out.demoTurnaround) throw new HttpError(400, 'Demo delivery time cannot be empty');
+    if (out.demoTurnaround.length > 160) throw new HttpError(400, 'Demo delivery time must be 160 characters or fewer');
+    if (/https?:\/\/|www\.|[$€£]\s?\d/i.test(out.demoTurnaround)) throw new HttpError(400, 'Demo delivery time must not contain a link or a price');
   }
   for (const n of [1, 2, 3]) {
     const name = `pkg${n}Name`;

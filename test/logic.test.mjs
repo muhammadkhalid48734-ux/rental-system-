@@ -19,7 +19,8 @@ test('pitch: greeting, hook fallback, no link, honest wording', () => {
   assert.match(noOwner, /^Hi!\n/);
   assert.match(noOwner, /I came across Bounce Co and like what you offer\./);
   assert.doesNotMatch(noOwner, /https?:|www\./);
-  assert.match(noOwner, /within the hour of you saying yes/);
+  assert.ok(noOwner.includes(`send it over ${CONFIG_DEFAULTS.demoTurnaround}.`));
+  assert.doesNotMatch(noOwner, /within the hour of you saying yes/);
   assert.doesNotMatch(noOwner, /already (built|made)|I built|I made/i);
 
   const withOwner = buildMessage(getStage(lead()), lead({ owner: 'Sam Rivera', hook: 'your castle lineup.' }), cfg);
@@ -203,4 +204,33 @@ test('demo packages: monthly may be empty, every package shows setup and monthly
   assert.match(block, /3\) Book, pay & sign online: \$600 setup \+ \$80\/month/);
   for (const line of block.split('\n')) assert.match(line, /setup/);
   assert.deepEqual([...allowedAmounts(c)].sort((a, b) => a - b), [80, 247, 297, 600]);
+});
+
+test('demo delivery time comes from Config everywhere: pitch template and quick replies', () => {
+  const custom = { ...CONFIG_DEFAULTS, demoTurnaround: 'usually same day, within 4 working hours (US Eastern)' };
+  const pitch = buildMessage({ key: 'pitch' }, lead(), parseConfig(custom));
+  assert.ok(pitch.includes('send it over usually same day, within 4 working hours (US Eastern).'));
+  assert.ok(!pitch.includes(CONFIG_DEFAULTS.demoTurnaround), 'default text must not be hard-coded');
+
+  const q = Object.fromEntries(quickReplies(parseConfig(custom)).map((x) => [x.title, x.text]));
+  for (const title of ['What do you need from me?', 'How fast is the demo?']) {
+    assert.ok(q[title].includes('usually same day, within 4 working hours (US Eastern)'), title);
+    assert.ok(!q[title].includes(CONFIG_DEFAULTS.demoTurnaround), title);
+  }
+  const qd = Object.fromEntries(quickReplies(parseConfig(CONFIG_DEFAULTS)).map((x) => [x.title, x.text]));
+  assert.ok(qd['How fast is the demo?'].includes(CONFIG_DEFAULTS.demoTurnaround));
+});
+
+test('the old hard-coded promise is gone from every template and quick reply', () => {
+  const c = parseConfig(CONFIG_DEFAULTS);
+  const texts = [];
+  for (const key of ['pitch', 'fu1', 'fu2', 'fu3', 'reply', 'nudge1', 'nudge2', 'nudge3']) texts.push(buildMessage({ key }, lead(), c));
+  texts.push(buildMessage({ key: 'demo' }, lead({ demoLink: 'https://d.example/x' }), c));
+  texts.push(...quickReplies(c).map((x) => x.text));
+  for (const t of texts) assert.doesNotMatch(t, /within the hour of (you|them) saying yes/i);
+});
+
+test('an empty delivery time shows a visible placeholder instead of inventing a promise', () => {
+  const pitch = buildMessage({ key: 'pitch' }, lead(), parseConfig({ ...CONFIG_DEFAULTS, demoTurnaround: '' }));
+  assert.match(pitch, /\[set the demo delivery time in Settings\]/);
 });

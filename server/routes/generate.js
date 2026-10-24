@@ -3,7 +3,7 @@ import { buildMessage, hasLink, packages } from '../../client/src/lib/messages.j
 import { rowToLead } from '../schema.js';
 import { HttpError, ah } from '../util.js';
 import { earlierMessages } from '../history.js';
-import { KINDS, SYSTEM_PROMPT, buildUserPrompt } from '../prompts.js';
+import { KINDS, buildSystemPrompt, buildUserPrompt } from '../prompts.js';
 import { assembleDemo, cleanOutput, validateDemoFinal, validateDraft } from '../validate.js';
 import { LlmError } from '../llm.js';
 import { readConfig } from './config.js';
@@ -58,7 +58,7 @@ export function generateRouter({ store, llm, queue, env = process.env, now = () 
       });
       let draft;
       try {
-        draft = cleanOutput(await queue.run(() => llm.generate({ system: SYSTEM_PROMPT, user }, { env })));
+        draft = cleanOutput(await queue.run(() => llm.generate({ system: buildSystemPrompt(config), user }, { env })));
       } catch (err) {
         if (err instanceof LlmError && err.code === 'bad_output') {
           violation = 'the answer was empty or cut off';
@@ -68,7 +68,7 @@ export function generateRouter({ store, llm, queue, env = process.env, now = () 
         throw err;
       }
 
-      let problems = validateDraft(kind, draft);
+      let problems = validateDraft(kind, draft, config);
       let text = draft;
       if (!problems.length && kind === 'demo') {
         text = assembleDemo(draft, lead, config);

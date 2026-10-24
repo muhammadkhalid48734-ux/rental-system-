@@ -11,6 +11,10 @@ const BUILT_PHRASES = [
   "i've made", 'i have made', 'i created your website', 'built your website', 'built you a website', 'built you a site',
 ];
 
+// Any promise about how fast something arrives. The only one allowed is Config.demoTurnaround, word for word.
+const TIMING_RE = /\bwithin\s+(?:the|an?|one|two|\d+(?:\s*-\s*\d+)?)\s+(?:hours?|minutes?|mins?|days?)\b|\b(?:in|inside|after)\s+(?:about\s+|around\s+|roughly\s+)?(?:an?|one|two|\d+)\s+(?:hours?|minutes?|mins?)\b|\b(?:same|next)[- ]day\b|\bnext morning\b|\bby\s+(?:tomorrow|tonight|morning|end of (?:the )?day)\b|\b(?:24|48)[- ]?hours?\b/i;
+const norm = (t) => t.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/\s+/g, ' ').trim();
+
 const wordCount = (t) => t.trim().split(/\s+/).filter(Boolean).length;
 const emojiCount = (t) => (t.match(/\p{Extended_Pictographic}/gu) || []).length;
 
@@ -31,8 +35,20 @@ export function cleanOutput(text) {
   return t;
 }
 
-/** Checks the model's draft. Returns a list of violations (empty when fine). */
-export function validateDraft(kind, text) {
+function checkTurnaround(kind, text, config) {
+  const promise = String(config?.demoTurnaround || '').trim();
+  const t = norm(text);
+  const p = norm(promise);
+  const v = [];
+  // A first message always makes the demo offer, so it must state the delivery time exactly as configured.
+  if (kind === 'cold' && p && !t.includes(p)) v.push(`it must state the demo delivery time word for word as: "${promise}"`);
+  // Anything else that sounds like a delivery promise is rejected (e.g. "within the hour of you saying yes").
+  if (TIMING_RE.test(p ? t.split(p).join(' ') : t)) v.push(`it promises a delivery time other than "${promise}"`);
+  return v;
+}
+
+/** Checks the model's draft. Returns a list of violations (empty when fine). `config` supplies demoTurnaround. */
+export function validateDraft(kind, text, config = {}) {
   const v = [];
   const t = text.trim();
   const [min, max] = LIMITS[kind];
@@ -59,6 +75,7 @@ export function validateDraft(kind, text) {
   } else if (t.includes(LINK_TOKEN) || t.includes(PACKAGES_TOKEN)) {
     v.push('it contains a placeholder token that is only allowed in demo messages');
   }
+  v.push(...checkTurnaround(kind, t, config));
   return v;
 }
 

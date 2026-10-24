@@ -13,6 +13,13 @@ const GROUPS = [
     ],
   },
   {
+    title: 'Demo delivery time',
+    note: 'Finishes the sentence “I\u2019d love to build you a free demo … and send it over ___”. Used in the first message, the AI prompt and the quick replies. Only promise what you can keep.',
+    fields: [
+      ['demoTurnaround', 'When the demo arrives', 'text', 'usually within the hour during our support hours, otherwise by the next morning (US time)', true],
+    ],
+  },
+  {
     title: 'Your details',
     note: 'Used in email footers. A postal address and unsubscribe line are expected on marketing email.',
     fields: [

@@ -111,14 +111,17 @@ const hookLine = (lead) => {
   return hook ? `I came across ${lead.name} and love ${hook}.` : `I came across ${lead.name} and like what you offer.`;
 };
 
-const PITCH_TAIL =
-  "I run a small web design studio and I'd love to build you a free demo of a modern website with a gallery and online booking, and send it over within the hour of you saying yes. It's private, no cost, no obligation. Want me to put one together?";
+/** The configured promise about when the demo arrives (Settings → Demo delivery time). */
+export const turnaround = (config) => String(config.demoTurnaround || '').trim() || '[set the demo delivery time in Settings]';
+
+const pitchTail = (config) =>
+  `I run a small web design studio and I'd love to build you a free demo of a modern website with a gallery and online booking, and send it over ${turnaround(config)}. It's private, no cost, no obligation. Want me to put one together?`;
 
 export function buildMessage(stage, lead, config) {
   const hi = greeting(lead);
   switch (stage.key) {
     case 'pitch':
-      return `${hi}\n\n${hookLine(lead)} ${problemSentence(lead)}\n\n${PITCH_TAIL}`;
+      return `${hi}\n\n${hookLine(lead)} ${problemSentence(lead)}\n\n${pitchTail(config)}`;
     case 'fu1':
       return `${hi} Just floating my message back to the top in case it got buried. I'm still happy to put together that free private demo for ${lead.name} whenever you're ready, no pressure. Want me to build one?`;
     case 'fu2':
@@ -254,7 +257,11 @@ export function quickReplies(config) {
     },
     {
       title: 'What do you need from me?',
-      text: "Just a yes, and permission to use a few photos from your page in a private demo. If you have a price list, service area or hours you'd like shown, send them over, but it's not required. I'll message you the private link once it's ready.",
+      text: `Just a yes, and permission to use a few photos from your page in a private demo. If you have a price list, service area or hours you'd like shown, send them over, but it's not required. I'll message you the private link ${turnaround(config)}.`,
+    },
+    {
+      title: 'How fast is the demo?',
+      text: `I'll send the private demo link ${turnaround(config)}. It's free and there's no obligation.`,
     },
     {
       title: 'Not interested',

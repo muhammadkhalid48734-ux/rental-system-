@@ -17,7 +17,7 @@ const SECRET = 's'.repeat(48);
 const PROD = { NODE_ENV: 'production', APP_PASSWORD: PASSWORD, SESSION_SECRET: SECRET, GROQ_API_KEY: 'gsk_test' };
 
 const GOOD =
-  "Hey Dana! Your sparkle-theme castle caught my eye. When I pulled up your site on my phone, the layout was tiny and hard to tap, and I'd guess a few parents give up before they ask about dates. I run a small remote web design studio and could put together a free private demo, with a photo gallery and online booking, within the hour of you saying yes. Would you want to see it?";
+  `Hey Dana! Your sparkle-theme castle caught my eye. When I pulled up your site on my phone, the layout was tiny and hard to tap, and I'd guess a few parents give up before they ask about dates. I run a small remote web design studio and could put together a free private demo, with a photo gallery and online booking, ${CONFIG_DEFAULTS.demoTurnaround}. Would you want to see it?`;
 
 async function serve(handler) {
   const server = http.createServer(handler);
@@ -226,6 +226,21 @@ test('config: packages validate, monthly may be empty, autoMark is ignored', asy
   } finally { await close(); }
 });
 
+test('config: demoTurnaround has a default, is editable, stays one line, and rejects links, prices and empty', async () => {
+  const { call, close } = await setup({ env: {} });
+  try {
+    const c = (await call('GET', '/api/config')).json.config;
+    assert.equal(c.demoTurnaround, 'usually within the hour during our support hours, otherwise by the next morning (US time)');
+    const r = await call('PUT', '/api/config', { demoTurnaround: '  usually same day,\n within 4 working hours  ' });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.config.demoTurnaround, 'usually same day, within 4 working hours');
+    for (const bad of ['', '   ', 'x'.repeat(161), 'see https://example.com', 'for $50']) {
+      assert.equal((await call('PUT', '/api/config', { demoTurnaround: bad })).status, 400, JSON.stringify(bad));
+    }
+    assert.equal((await call('GET', '/api/config')).json.config.demoTurnaround, 'usually same day, within 4 working hours');
+  } finally { await close(); }
+});
+
 // ---------------------------------------------------------------- Messages tab
 
 test('Mark sent stores the exact text; undo adds a compensating row; the Log keeps 6 columns', async () => {
@@ -309,6 +324,34 @@ test('generate: two violations (or two empty answers) fall back to the offline t
       assert.equal(llm.calls.length, 2, 'exactly one retry');
     } finally { await t.close(); }
   }
+});
+
+test('generate: the delivery time from Config reaches the prompt, is enforced, and the template fallback uses it', async () => {
+  const custom = 'usually same day, within 4 working hours (US Eastern)';
+  const missing = GOOD.replace(CONFIG_DEFAULTS.demoTurnaround, 'whenever I get to it');
+  const llm = fakeLlm(missing, GOOD.replace(CONFIG_DEFAULTS.demoTurnaround, custom));
+  const t = await genSetup(llm);
+  try {
+    await t.call('PUT', '/api/config', { demoTurnaround: custom });
+    const r = await gen(t);
+    assert.equal(r.json.source, 'personalized');
+    assert.ok(r.json.text.includes(custom));
+    assert.equal(llm.calls.length, 2, 'first draft lacked the configured wording, so it was retried once');
+    assert.match(llm.calls[1].user, /previous draft was rejected because: it must state the demo delivery time word for word as: "usually same day/);
+    for (const c of llm.calls) {
+      assert.ok(c.system.includes(custom) && !c.system.includes(CONFIG_DEFAULTS.demoTurnaround));
+      assert.ok(c.user.includes(custom));
+    }
+  } finally { await t.close(); }
+
+  const t2 = await genSetup(fakeLlm('Hi! within the hour of you saying yes, I will build you a site.', 'Hi! within the hour of you saying yes, I will build you a site.'));
+  try {
+    await t2.call('PUT', '/api/config', { demoTurnaround: custom });
+    const r = await gen(t2);
+    assert.equal(r.json.source, 'template');
+    assert.ok(r.json.text.includes(`send it over ${custom}.`), 'template fallback uses the configured wording');
+    assert.ok(!/within the hour of you saying yes/.test(r.json.text));
+  } finally { await t2.close(); }
 });
 
 test('generate: provider errors are clear and never look like a login failure', async () => {

@@ -118,7 +118,11 @@ Before any `git push` or deploy, check `git status` and make sure no `.env`, key
 
 **Messages**: `timestamp, leadId, kind, text`. Written when you press **Mark sent**, with the text exactly as you sent it (after your edits). `kind` is `cold`, `followup1-3`, `replyAck`, `demo`, `demoNudge1-3`. **Undo** appends a compensating row (`<kind>:undo`, empty text) instead of deleting anything. These are the "earlier messages" the AI is told not to repeat.
 
-**Config**: `key, value` for `accA, accB, cap, gaps, yourName, studio, address` and the three demo packages (`pkgNName`, `pkgNSetup`, `pkgNMonthly`, `pkgNNote`). All editable in Settings.
+**Config**: `key, value` for `accA, accB, cap, gaps, yourName, studio, address, demoTurnaround` and the three demo packages (`pkgNName`, `pkgNSetup`, `pkgNMonthly`, `pkgNNote`). All editable in Settings.
+
+### Demo delivery time
+
+`demoTurnaround` (Settings → *Demo delivery time*) finishes the sentence "I'd love to build you a free demo … and send it over ___". Default: *usually within the hour during our support hours, otherwise by the next morning (US time)*. It is the only delivery promise the app ever writes: the first-message template, the AI system prompt and task, the "What do you need from me?" and "How fast is the demo?" quick replies all read it from Config. The AI must include it word for word in a first message, and any draft that promises a different delivery time (for example "within the hour of you saying yes" or "in 30 minutes") is rejected and retried, then replaced by the template. One line, up to 160 characters, no links or prices. Only promise what you can keep.
 
 ### Demo packages
 
