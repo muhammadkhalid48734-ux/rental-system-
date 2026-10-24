@@ -11,7 +11,11 @@ async function req(method, url, body) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && url !== '/api/login') onUnauthorized();
-    const err = new Error(json.error || `Request failed (${res.status})`);
+    const path = url.replace(/\/[0-9a-f]{8}-[0-9a-f-]{27}/g, '/<id>');
+    const fallback = res.status === 404
+      ? `The server did not recognise ${method} ${path} (HTTP 404, no JSON answer). The deployment may be out of date or misrouted: redeploy and check the Vercel function logs.`
+      : `Request failed (${res.status})`;
+    const err = new Error(json.error || fallback);
     err.status = res.status;
     err.code = json.code;
     err.retryAfterMs = json.retryAfterMs;

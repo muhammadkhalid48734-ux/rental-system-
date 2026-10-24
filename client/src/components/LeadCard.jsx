@@ -195,7 +195,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
 
   // Write the personalized message as soon as the lead is on screen (and AI is configured).
   const needAuto = !!(
-    active && showMessage && env.llm.configured && gkey && entry.draft === null
+    showMessage && env.llm.configured && gkey && entry.draft === null
     && !entry.versions.some((x) => x.source === 'personalized')
     && !(stage?.key === 'demo' && lead.demoLink !== eff.demoLink)
   );
