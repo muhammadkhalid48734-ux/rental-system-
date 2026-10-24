@@ -19,6 +19,7 @@ async function req(method, url, body) {
     err.status = res.status;
     err.code = json.code;
     err.retryAfterMs = json.retryAfterMs;
+    err.detail = json.detail;
     throw err;
   }
   return json;

@@ -67,16 +67,17 @@ export async function requestVariant({ lead, stage, hint, template }) {
 }
 
 export function errorMessage(err) {
+  const why = err.detail ? ` Groq says: ${err.detail}` : '';
   switch (err.code) {
     case 'rate_limited':
-      return `Rate limit reached. Try again in about ${Math.max(1, Math.ceil((err.retryAfterMs || 60000) / 1000))}s.`;
+      return `Rate limit reached. Try again in about ${Math.max(1, Math.ceil((err.retryAfterMs || 60000) / 1000))}s.${why}`;
     case 'not_configured':
       return 'AI personalization is off. Add your Groq API key on the server (see Settings).';
     case 'bad_key':
       return 'The AI provider rejected the API key. Check the Groq key on the server.';
     case 'provider_down':
-      return 'The AI provider is not responding. Try again shortly.';
+      return `${err.message || 'The AI provider is not responding. Try again shortly.'}${why}`;
     default:
-      return err.message || 'Could not generate a message.';
+      return `${err.message || 'Could not generate a message.'}${why}`;
   }
 }

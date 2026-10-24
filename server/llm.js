@@ -26,6 +26,16 @@ function retryAfterMs(res) {
   return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
 }
 
+// Groq explains which limit was hit in the error body (e.g. tokens per minute vs per day); keep it for the user.
+async function detailOf(res) {
+  try {
+    const msg = (await res.json())?.error?.message;
+    return typeof msg === 'string' ? msg.replace(/\s+/g, ' ').slice(0, 300) : '';
+  } catch {
+    return '';
+  }
+}
+
 async function post(fetchImpl, url, init, timeoutMs) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -78,7 +88,7 @@ export async function generate({ system, user }, deps = {}) {
     if (res.status === 429) {
       const wait = retryAfterMs(res) ?? 2000;
       if (attempt === 0 && wait <= MAX_RETRY_WAIT_MS) { await sleep(wait); continue; }
-      throw new LlmError('rate_limited', 'The AI provider rate limit was hit.', { retryAfterMs: wait });
+      throw new LlmError('rate_limited', 'The AI provider rate limit was hit.', { retryAfterMs: wait, detail: await detailOf(res) });
     }
     if (res.status >= 500) {
       if (attempt === 0) { await sleep(800 + Math.floor(Math.random() * 400)); continue; }
@@ -91,7 +101,7 @@ export async function generate({ system, user }, deps = {}) {
     throw new LlmError('bad_key', 'The AI provider rejected GROQ_API_KEY. Check that the key is valid.');
   }
   if (!res.ok) {
-    throw new LlmError('provider_down', `The AI provider rejected the request (HTTP ${res.status}). Check GROQ_MODEL.`);
+    throw new LlmError('provider_down', `The AI provider rejected the request (HTTP ${res.status}). Check GROQ_MODEL.`, { detail: await detailOf(res) });
   }
 
   let json;

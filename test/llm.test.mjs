@@ -64,6 +64,11 @@ test('429 twice: rate_limited with a retry hint; a long retry-after is not waite
   assert.equal(f.calls.length, 1, 'no retry when the wait would not fit a serverless function');
 });
 
+test("429: Groq's own explanation of the limit is passed on", async () => {
+  const body = { ok: false, status: 429, headers: new Headers({ 'retry-after': '272' }), json: async () => ({ error: { message: 'Rate limit reached for model `openai/gpt-oss-120b` on tokens per day (TPD): Limit 200000, Used 199000.' } }) };
+  await assert.rejects(run(mockFetch(body)), (e) => e.code === 'rate_limited' && /tokens per day/.test(e.detail));
+});
+
 test('5xx is retried once; two failures -> provider_down', async () => {
   let f = mockFetch(status(503), ok('recovered'));
   assert.equal(await run(f), 'recovered');

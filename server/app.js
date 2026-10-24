@@ -82,7 +82,7 @@ export function createApp({ store, env = process.env, localOnly = false, staticD
   app.use((err, _req, res, _next) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message });
     if (err instanceof LlmError) {
-      return res.status(STATUS_BY_LLM_CODE[err.code] || 502).json({ error: err.message, code: err.code, retryAfterMs: err.retryAfterMs });
+      return res.status(STATUS_BY_LLM_CODE[err.code] || 502).json({ error: err.message, code: err.code, retryAfterMs: err.retryAfterMs, detail: err.detail });
     }
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON body' });
     const code = err?.code || err?.response?.status;
