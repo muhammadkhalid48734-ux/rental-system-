@@ -25,3 +25,23 @@ export const fmtLongDate = (d) =>
 export const fmtShortDate = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 export const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** Strict YYYY-MM-DD -> local Date at 00:00, or null when it is not a real calendar date. */
+export function parseDay(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(y, mo - 1, d);
+  return y >= 2000 && date.getFullYear() === y && date.getMonth() === mo - 1 && date.getDate() === d ? date : null;
+}
+
+/**
+ * A stored timestamp for a date-only value: local midday, so the calendar day is the same in any timezone
+ * (follow-up due dates are computed per day). Today's date never lands in the future.
+ */
+export function dayToIso(day, now = new Date()) {
+  const d = parseDay(day);
+  if (!d) return '';
+  d.setHours(12, 0, 0, 0);
+  return (d > now ? now : d).toISOString();
+}

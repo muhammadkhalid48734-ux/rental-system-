@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PROBLEMS } from '../lib/messages.js';
-import { parsePaste } from '../lib/importer.js';
+import { IMPORT_STATUSES, cellText, parsePaste, resolveProgress } from '../lib/importer.js';
+import { nextAction } from '../lib/schedule.js';
+import { fmtShortDate, parseDay, ymd } from '../lib/dates.js';
 
 function Modal({ title, onClose, children }) {
   const ref = useRef(null);
@@ -146,19 +148,56 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
   );
 }
 
-export function ImportDialog({ existingNames, onImport, onClose }) {
+const EXAMPLE = [
+  'Fun Jumps\thttps://funjumps.com\t@funjumps\t\tsite looks old\thi@funjumps.com\tactive\t2\t2026-10-20\tA',
+  'Castle Kings\t\t\thttps://facebook.com/castlekings\tposts daily\t\tqueued',
+].join('\n');
+
+const FIELD_KEYS = ['status', 'step', 'lastSent', 'account'];
+
+export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
   const [text, setText] = useState('');
+  const [edits, setEdits] = useState({}); // row index -> fixes typed in the preview, and skip flags
+  const [defaultAccount, setDefaultAccount] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const ref = useRef(null);
-  const parsed = useMemo(() => parsePaste(text, existingNames), [text, existingNames]);
   const close = () => ref.current?.closest('dialog')?.close();
+
+  const parsed = useMemo(() => parsePaste(text, existingNames), [text, existingNames]);
+  useEffect(() => { setEdits({}); }, [text]); // row numbers change with the paste, so drop old fixes
+
+  const items = useMemo(() => {
+    const now = new Date();
+    return parsed.rows.map((row, i) => {
+      if (row.dup) return { row, i, state: 'dup' };
+      const e = edits[i] || {};
+      const raw = row.raw ? { ...row.raw, ...Object.fromEntries(FIELD_KEYS.filter((k) => k in e).map((k) => [k, e[k]])) } : null;
+      const res = raw ? resolveProgress(raw, { now, defaultAccount }) : { errors: [], notes: [], progress: null };
+      const next = res.progress ? nextAction(res.progress, cfg, now) : null;
+      const state = e.skip ? 'skipped' : res.errors.length ? 'error' : 'ready';
+      return { row, i, raw, res, next, state };
+    });
+  }, [parsed, edits, defaultAccount, cfg]);
+
+  const ready = items.filter((x) => x.state === 'ready');
+  const count = (st) => items.filter((x) => x.state === st).length;
+  const setEdit = (i, patch) => setEdits((all) => ({ ...all, [i]: { ...all[i], ...patch } }));
 
   const go = async () => {
     setBusy(true);
     setErr('');
     try {
-      await onImport(parsed.fresh);
+      const leads = ready.map(({ row, res }) => ({
+        name: row.name, site: row.site, ig: row.ig, fb: row.fb, email: row.email, note: row.note, problem: row.problem,
+        ...(res.progress
+          ? {
+            status: res.progress.status, track: 'cold', step: res.progress.step, account: res.progress.account,
+            lastSentAt: res.progress.lastSentAt, repliedAt: res.progress.repliedAt,
+          }
+          : {}),
+      }));
+      await onImport(leads);
       close();
     } catch (ex) {
       setErr(ex.message);
@@ -167,46 +206,132 @@ export function ImportDialog({ existingNames, onImport, onClose }) {
     }
   };
 
+  const today = ymd(new Date());
+
   return (
     <Modal title="Import leads" onClose={onClose}>
       <div className="section" ref={ref}>
         <p className="hint">
           Paste rows copied from your sheet (tab-separated). Columns in order:
-          {' '}<b>business, website, Instagram, Facebook, note, email</b>. A header row is ignored.
-          Duplicate names are skipped, tracking parameters are removed, and the problem is guessed from the note and website.
+          {' '}<b>business, website, Instagram, Facebook, note, email</b>, then optionally, for leads you already messaged:
+          {' '}<b>status</b> (queued, active, replied, won, lost, done), <b>step</b> (0-4 messages already sent),
+          {' '}<b>lastSentAt</b> (YYYY-MM-DD) and <b>account</b> (A or B). A header row is ignored.
+          Duplicate names are skipped, tracking parameters are removed, and the problem is guessed.
         </p>
         <textarea
-          rows={7}
+          rows={6}
           aria-label="Pasted rows"
-          placeholder={'Fun Jumps\thttps://funjumps.com\t@funjumps\t\tsite down since May\thi@funjumps.com'}
+          placeholder={EXAMPLE}
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="mono"
           style={{ fontSize: 13 }}
           autoFocus
         />
-        {parsed.rows.length > 0 && (
+
+        {parsed.hasProgress && (
+          <label className="field">
+            <span>Account for rows that already have messages sent but no account</span>
+            <select value={defaultAccount} onChange={(e) => setDefaultAccount(e.target.value)} style={{ width: 'auto' }}>
+              <option value="">None (show an error)</option>
+              <option value="A">A · {cfg.accA}</option>
+              <option value="B">B · {cfg.accB}</option>
+            </select>
+          </label>
+        )}
+
+        {items.length > 0 && (
           <>
-            <p className="hint">
-              <b>{parsed.fresh.length}</b> new
-              {parsed.skippedDup ? `, ${parsed.skippedDup} duplicate${parsed.skippedDup === 1 ? '' : 's'} skipped` : ''}
-              {parsed.skippedEmpty ? `, ${parsed.skippedEmpty} blank` : ''}. Check the guessed problems below; you can edit any lead afterwards.
+            <p className="hint" role="status">
+              <b>{ready.length}</b> ready
+              {count('error') ? <>, <b className="bad-text">{count('error')}</b> need fixing (not imported until fixed or skipped)</> : ''}
+              {count('skipped') ? `, ${count('skipped')} skipped` : ''}
+              {parsed.skippedDup ? `, ${parsed.skippedDup} duplicate${parsed.skippedDup === 1 ? '' : 's'} left out` : ''}
+              {parsed.skippedEmpty ? `, ${parsed.skippedEmpty} blank` : ''}.
+              {' '}You can edit any lead afterwards.
             </p>
-            <div className="preview">
-              {parsed.rows.slice(0, 100).map((r, i) => (
-                <div className={`pr ${r.dup ? 'dup' : ''}`} key={`${r.name}-${i}`}>
-                  <span>{r.name}{r.email ? ` · ${r.email}` : ''}</span>
-                  <span className={`badge prob-${r.problem}`}>{r.dup ? 'duplicate' : PROBLEMS[r.problem]}</span>
+            <div className="imp-list">
+              {items.slice(0, 200).map((it) => (
+                <div className={`imp-row ${it.state}`} key={`${it.row.name}-${it.i}`}>
+                  <div className="imp-head">
+                    <b>{it.row.name}{it.row.email ? ` · ${it.row.email}` : ''}</b>
+                    <span className={`badge prob-${it.row.problem}`}>{it.state === 'dup' ? 'duplicate' : PROBLEMS[it.row.problem]}</span>
+                  </div>
+
+                  {it.state !== 'dup' && (
+                    <>
+                      {it.raw && (
+                        <div className="imp-fields">
+                          <label className="field">
+                            <span>Status</span>
+                            <select value={cellText(it.raw.status).toLowerCase()} onChange={(e) => setEdit(it.i, { status: e.target.value })}>
+                              <option value="">(from step)</option>
+                              {IMPORT_STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+                              {it.raw.status.trim() && !IMPORT_STATUSES.includes(it.raw.status.trim().toLowerCase()) && (
+                                <option value={cellText(it.raw.status).toLowerCase()}>{it.raw.status.trim()} (invalid)</option>
+                              )}
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>Step (0-4)</span>
+                            <input type="text" inputMode="numeric" value={cellText(it.raw.step)} onChange={(e) => setEdit(it.i, { step: e.target.value })} />
+                          </label>
+                          <label className="field">
+                            <span>Last sent</span>
+                            <input type="text" inputMode="numeric" placeholder="YYYY-MM-DD" value={cellText(it.raw.lastSent)} onChange={(e) => setEdit(it.i, { lastSent: e.target.value })} />
+                          </label>
+                          <label className="field">
+                            <span>Account</span>
+                            <select value={cellText(it.raw.account).toUpperCase()} onChange={(e) => setEdit(it.i, { account: e.target.value })}>
+                              <option value="">(none)</option>
+                              <option value="A">A</option>
+                              <option value="B">B</option>
+                              {it.raw.account.trim() && !['A', 'B'].includes(it.raw.account.trim().toUpperCase()) && (
+                                <option value={cellText(it.raw.account).toUpperCase()}>{it.raw.account.trim()} (invalid)</option>
+                              )}
+                            </select>
+                          </label>
+                        </div>
+                      )}
+
+                      {it.res.errors.length > 0 && (
+                        <ul className="imp-errors" role="alert">
+                          {it.res.errors.map((m) => <li key={m}>{m}</li>)}
+                        </ul>
+                      )}
+                      {it.state !== 'error' && (
+                        <p className="hint imp-next">
+                          {it.res.progress ? (
+                            <>
+                              Step {it.res.progress.step} of 4
+                              {it.res.progress.lastSentDay && parseDay(it.res.progress.lastSentDay)
+                                ? <> · last sent {fmtShortDate(parseDay(it.res.progress.lastSentDay))}{it.res.progress.lastSentDay === today ? ' (today)' : ''}</>
+                                : null}
+                              {' · '}<b>Next: {it.next.text}</b>
+                              {it.res.notes.length ? <span className="muted"> ({it.res.notes.join('; ')})</span> : null}
+                            </>
+                          ) : (
+                            <><b>Next: New DM, ready today</b> (subject to the daily limit)</>
+                          )}
+                        </p>
+                      )}
+                      <label className="check imp-skip">
+                        <input type="checkbox" checked={it.state !== 'skipped'} onChange={(e) => setEdit(it.i, { skip: !e.target.checked })} />
+                        <span>{it.state === 'skipped' ? 'Skipped' : 'Import this row'}</span>
+                      </label>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
           </>
         )}
+        {items.length > 200 && <p className="hint">Showing the first 200 rows of {items.length}.</p>}
         {err && <div className="notice bad" role="alert">{err}</div>}
         <div className="modal-actions">
           <button className="btn" onClick={close}>Cancel</button>
-          <button className="btn primary" disabled={busy || parsed.fresh.length === 0} onClick={go}>
-            {busy ? 'Importing…' : `Import ${parsed.fresh.length || ''} lead${parsed.fresh.length === 1 ? '' : 's'}`.replace('  ', ' ')}
+          <button className="btn primary" disabled={busy || ready.length === 0} onClick={go}>
+            {busy ? 'Importing…' : `Import ${ready.length} lead${ready.length === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>

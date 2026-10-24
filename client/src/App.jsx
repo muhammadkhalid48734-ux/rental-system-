@@ -203,10 +203,16 @@ export default function App() {
     toast(`Deleted ${lead.name}`);
   };
 
-  const importLeads = async (rows) => {
-    const res = await api.createLeads(rows.map(({ dup, ...r }) => r));
+  const importLeads = async (leads) => {
+    const res = await api.createLeads(leads);
     await load();
-    toast(`Imported ${res.created.length} lead${res.created.length === 1 ? '' : 's'}${res.skipped.length ? `, skipped ${res.skipped.length} duplicate${res.skipped.length === 1 ? '' : 's'}` : ''}`);
+    const withProgress = res.created.filter((l) => l.step > 0).length;
+    toast(
+      `Imported ${res.created.length} lead${res.created.length === 1 ? '' : 's'}`
+      + (withProgress ? ` (${withProgress} already messaged, ${res.logged} sent messages added to the Log)` : '')
+      + (res.skipped.length ? `, skipped ${res.skipped.length} duplicate${res.skipped.length === 1 ? '' : 's'}` : ''),
+      { ms: 6000 },
+    );
   };
 
   const saveConfig = async (form) => {
@@ -272,6 +278,7 @@ export default function App() {
       {dialog?.type === 'import' && (
         <ImportDialog
           existingNames={data.leads.map((l) => l.name)}
+          cfg={cfg}
           onImport={importLeads}
           onClose={() => setDialog(null)}
         />

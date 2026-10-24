@@ -1,4 +1,4 @@
-import { addDays, daysBetween, isSameDay, startOfDay, ymd } from './dates.js';
+import { addDays, daysBetween, fmtShortDate, isSameDay, startOfDay, ymd } from './dates.js';
 import { getStage, PROBLEM_PRIORITY } from './messages.js';
 
 export function parseConfig(c) {
@@ -23,7 +23,9 @@ export function dueInfo(lead, cfg, now = new Date()) {
  * "Mark sent" frees its daily slot.
  */
 export function netSends(log) {
-  const sorted = [...log].sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+  // Rows backfilled by an import describe messages sent before the app was used. They stay in the Log as
+  // history but never count toward today's meters, the sent list, the progress ring or the streak.
+  const sorted = log.filter((r) => r.channel !== 'imported').sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
   const out = [];
   for (const r of sorted) {
     if (r.channel === 'undo') {
@@ -137,4 +139,30 @@ export function weekStats(leads, log, now = new Date()) {
     replies: leads.filter((l) => l.repliedAt && new Date(l.repliedAt) >= weekStart).length,
     won: leads.filter((l) => l.status === 'won').length,
   };
+}
+
+/** What happens next for a lead (used by the import preview). `p` needs status, step, lastSentAt. */
+export function nextAction(p, cfg, now = new Date()) {
+  switch (p.status) {
+    case 'queued':
+      return { kind: 'new', text: 'New DM, ready today (subject to the daily limit)' };
+    case 'replied':
+      return { kind: 'reply', text: 'Reply is due now' };
+    case 'active': {
+      const d = dueInfo({ status: 'active', step: p.step, lastSentAt: p.lastSentAt }, cfg, now);
+      if (!d) return { kind: 'none', text: 'No follow-up scheduled' };
+      const label = `Follow-up ${p.step}`;
+      const when = fmtShortDate(d.due);
+      const text = d.overdueDays > 0
+        ? `${label} overdue by ${d.overdueDays} day${d.overdueDays === 1 ? '' : 's'} (was due ${when})`
+        : d.overdueDays === 0
+          ? `${label} due today`
+          : `${label} due ${when} (in ${-d.overdueDays} day${d.overdueDays === -1 ? '' : 's'})`;
+      return { kind: 'followup', due: d.due, overdueDays: d.overdueDays, text };
+    }
+    case 'done':
+      return { kind: 'none', text: 'Sequence finished' };
+    default:
+      return { kind: 'none', text: 'Nothing scheduled' };
+  }
 }

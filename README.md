@@ -114,7 +114,7 @@ Before any `git push` or deploy, check `git status` and make sure no `.env`, key
 | `verified` | `TRUE`/`FALSE`: "I opened it and confirmed the problem" |
 | `order` | import order; decides the default queue order within a priority |
 
-**Log**: `timestamp, leadId, account, track, step, channel`. `track` is `cold`, `demo` or `reply`; `step` is the index of the message sent (0 = first of that track); `channel` is `ig`, `fb`, `email` or `undo`.
+**Log**: `timestamp, leadId, account, track, step, channel`. `track` is `cold`, `demo` or `reply`; `step` is the index of the message sent (0 = first of that track); `channel` is `ig`, `fb`, `email` or `undo`; backfilled rows from an import use `imported` (see Import).
 
 **Messages**: `timestamp, leadId, kind, text`. Written when you press **Mark sent**, with the text exactly as you sent it (after your edits). `kind` is `cold`, `followup1-3`, `replyAck`, `demo`, `demoNudge1-3`. **Undo** appends a compensating row (`<kind>:undo`, empty text) instead of deleting anything. These are the "earlier messages" the AI is told not to repeat.
 
@@ -151,7 +151,23 @@ The server builds every prompt itself from the stored lead, so the browser can o
 
 ### Import
 
-Leads tab → **Import**. Paste tab-separated rows: `business, website, Instagram, Facebook, note, email`. Duplicate names are skipped, tracking parameters are stripped, an email is pulled out, and the problem is guessed. Check the preview first.
+Leads tab → **Import**. Paste tab-separated rows (from a sheet). Columns in order:
+
+| # | column | notes |
+| --- | --- | --- |
+| 1-6 | `business, website, Instagram, Facebook, note, email` | as before. Duplicate names are skipped, tracking parameters stripped, an email pulled out, the problem guessed. |
+| 7 | `status` (optional) | `queued`, `active`, `replied`, `won`, `lost`, `done` |
+| 8 | `step` (optional) | `0`-`4`: how many messages were already sent |
+| 9 | `lastSentAt` (optional) | `YYYY-MM-DD`, a real date, not in the future |
+| 10 | `account` (optional) | `A` or `B` |
+
+A header row is ignored. A 6-column paste behaves exactly as before: every lead is queued at step 0.
+
+If a row has any of columns 7-10, it is imported as a **cold-track** lead with status, step, lastSentAt and account exactly as given, so **Today** shows its follow-up on the real due date (using the gaps from Settings) and the card shows the right step label. Blank cells get sensible defaults, which the preview spells out: a step without a status becomes `active`, `done` without a step means 4, and **Account for rows with none** in the dialog fills a missing account. A `replied` lead lands in *Replies to handle* straight away.
+
+The preview checks every row and shows clear errors you can fix in place (status, step, last sent, account) or skip with the checkbox. Rows with errors are never imported. It also shows each lead's step, last sent date and **next due date**. Rows are rejected when: `step` is not a whole number 0-4; the date is not `YYYY-MM-DD`, not a real calendar date, or in the future; `status` or `account` is not one of the listed values; a `queued` lead has a step or date; an `active` lead has step 0 or 4 or no date; the step is above 0 but there is no account (follow-ups must come from the same account as the first message).
+
+**Log backfill.** For each imported lead the app adds one Log row per message already sent (steps 0 to step-1) with channel `imported`. The latest row carries `lastSentAt`; earlier rows have a blank timestamp. These rows are history only: they never count toward today's daily limits, the *Sent today* list, the progress ring or the streak, even if `lastSentAt` is today. "Contacted" in the Leads tab is computed from the leads themselves, so imported leads count there as soon as they have a step.
 
 ## API
 

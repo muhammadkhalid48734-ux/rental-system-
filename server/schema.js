@@ -33,6 +33,9 @@ export const CONFIG_DEFAULTS = {
   pkg3Note: 'Everything in the middle plan, plus online deposit payment, a rental waiver customers sign on their phone, text reminders, and 2 hours of edits per month.',
 };
 
+// Written only by the server when leads are imported with progress; never accepted from POST /api/log.
+export const IMPORTED_CHANNEL = 'imported';
+
 export const ENUMS = {
   problem: ['outdated', 'down', 'parked', 'nosite', 'social'],
   status: ['queued', 'active', 'replied', 'won', 'lost', 'done'],
@@ -106,6 +109,8 @@ export function cleanLead(input, base = null) {
     if (!has(k)) continue;
     const s = str(input[k]);
     if (s && Number.isNaN(Date.parse(s))) throw new HttpError(400, `${k} must be an ISO date`);
+    // 36h of slack so a date entered in a timezone ahead of the server is not rejected.
+    if (s && Date.parse(s) > Date.now() + 36 * 3600 * 1000) throw new HttpError(400, `${k} must not be in the future`);
     out[k] = s;
   }
   if (has('problem')) out.problem = pickEnum(ENUMS.problem, input.problem, 'problem');
