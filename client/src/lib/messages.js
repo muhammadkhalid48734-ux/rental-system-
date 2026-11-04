@@ -259,6 +259,14 @@ export function quickReplies(config) {
       ],
     },
     {
+      title: 'Is it really free?',
+      text: `The demo is free and there's no obligation. The website build is free too. You only pay the monthly plan if you decide to go live, and plans start at ${startsAt} with a 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you.`,
+    },
+    {
+      title: 'What do you need from me?',
+      text: 'Just your business name, the area you serve, your items and prices if you have them, and your OK to use a few photos from your page for the demo only. It stays private.',
+    },
+    {
       title: 'Where are you based?',
       text: `Full transparency: I run a small, remote web design studio${studioName} based in Pakistan. I work with US businesses online, so everything happens over DM and email. I'm happy to jump on a video call or send my portfolio if you'd like to see more.`,
     },

@@ -38,7 +38,7 @@ export default function Login({ onDone }) {
             <input
               id="login-password"
               type={show ? 'text' : 'password'}
-              autoComplete="current-password"
+              autoComplete="new-password"
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}

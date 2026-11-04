@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   buildMessage, getStage, applySend, quickReplies, toEmailText, plans, planPrice, allowedAmounts, recommendReply, emailSubject,
   genericHookWords, hookWordCount, TERMS_LINE, REPLY_ENDING, DEMO_CLOSING,
 } from '../client/src/lib/messages.js';
-import { validateDraft } from '../server/validate.js';
+import { hasDeliveryPromise, validateDraft } from '../server/validate.js';
 import { buildToday, parseConfig, dueInfo, netSends, weekStats } from '../client/src/lib/schedule.js';
 import { parsePaste, cleanUrl, guessProblem } from '../client/src/lib/importer.js';
 
@@ -236,7 +237,7 @@ test('terms line and the recommended-plan reply', () => {
 test('quick replies: the new set, in order, with the exact wording that was asked for', () => {
   const q = quickReplies(cfg);
   assert.deepEqual(q.map((x) => x.title), [
-    'How much?', 'Where are you based?', 'Do I own the site?', 'Facebook is enough', 'Too expensive', "I'll think about it",
+    'How much?', 'Is it really free?', 'What do you need from me?', 'Where are you based?', 'Do I own the site?', 'Facebook is enough', 'Too expensive', "I'll think about it",
     'How do reviews work?', 'How does double-booking protection work?', 'What if I stop?', 'Not interested',
   ]);
   const by = Object.fromEntries(q.map((x) => [x.title, x]));
@@ -341,4 +342,31 @@ test('header tasks = new DMs + follow-ups: done today vs still to do (replies ar
 
   t = buildToday([], [], cfg, NOW);
   assert.deepEqual(t.progress.tasks, { done: 0, left: 0, total: 0 });
+});
+
+test('"Is it really free?" and "What do you need from me?": exact wording, no delivery promise, pass the validator', () => {
+  const by = Object.fromEntries(quickReplies(cfg).map((x) => [x.title, x.text]));
+  assert.equal(by['Is it really free?'], "The demo is free and there's no obligation. The website build is free too. You only pay the monthly plan if you decide to go live, and plans start at $59/month with a 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you.");
+  assert.equal(by['What do you need from me?'], 'Just your business name, the area you serve, your items and prices if you have them, and your OK to use a few photos from your page for the demo only. It stays private.');
+
+  for (const title of ['Is it really free?', 'What do you need from me?']) {
+    assert.equal(hasDeliveryPromise(by[title]), false, `${title}: delivery-time promise`);
+    assert.doesNotMatch(by[title], /support hours|saying yes|next morning|within the hour|US time/i);
+  }
+  // Run through the draft validator as a follow-up. "What do you need" passes outright. "Is it really free?" quotes
+  // the monthly price on purpose (it is a pricing answer), so the price and monthly-plan rules are the only ones that fire.
+  assert.deepEqual(validateDraft('followup1', by['What do you need from me?']), []);
+  const free = validateDraft('followup1', by['Is it really free?']);
+  assert.ok(free.every((x) => /price|monthly/.test(x)), free.join(' | '));
+
+  // with the founding offer on, the starting price follows Config
+  const f = Object.fromEntries(quickReplies({ ...cfg, foundingOffer: 'true' }).map((x) => [x.title, x.text]));
+  assert.match(f['Is it really free?'], /plans start at \$39\/month for the first year \(\$59\/month after\) with a 3-month minimum/);
+  assert.equal(hasDeliveryPromise(f['Is it really free?']), false);
+});
+
+test('the login field does not trigger the browser saved-password dropdown', () => {
+  const login = fs.readFileSync(new URL('../client/src/components/Login.jsx', import.meta.url), 'utf8');
+  assert.match(login, /autoComplete="new-password"/);
+  assert.doesNotMatch(login, /current-password/);
 });

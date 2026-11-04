@@ -35,6 +35,9 @@ const FORBIDDEN = [
   [/\bfree\s+(?:\w+\s+)?(?:website|web site|site)\b/i, 'it says "free website"; say "free demo"'],
 ];
 
+/** True when the text promises when or how fast something will arrive. Shared by the draft checks and the tests. */
+export const hasDeliveryPromise = (text) => TIMING_RE.test(text);
+
 const norm = (t) => t.toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim();
 
 const wordCount = (t) => t.trim().split(/\s+/).filter(Boolean).length;
