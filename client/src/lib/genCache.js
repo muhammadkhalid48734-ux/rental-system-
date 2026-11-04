@@ -37,7 +37,8 @@ function persist(key, entry) {
   } catch { /* storage unavailable or full */ }
 }
 
-const emit = () => listeners.forEach((fn) => fn());
+let version = 0; // bumps on every change, for components that summarise many entries
+const emit = () => { version++; listeners.forEach((fn) => fn()); };
 
 export const genCache = {
   get(key) {
@@ -60,6 +61,7 @@ export const genCache = {
     load();
     if (map.delete(key)) { persist(key, null); emit(); }
   },
+  getVersion: () => version,
   subscribe(fn) {
     listeners.add(fn);
     return () => listeners.delete(fn);

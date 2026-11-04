@@ -37,3 +37,10 @@ export function dueBadge(lead, cfg, now = new Date()) {
   if (due.overdueDays === 0) return { tone: 'warn', text: 'Due today' };
   return { tone: 'plain', text: `Due ${fmtShortDate(due.due)}` };
 }
+
+// Note and hook are different things: the note is internal facts about the problem, the hook appears in the message.
+export const HOOK_LABEL = 'Hook: one true detail you saw on their page';
+export const HOOK_PLACEHOLDER = 'e.g. the blue and yellow castle photos';
+export const NOTE_LABEL = 'Note: internal facts about the problem';
+export const NOTE_HELP = 'Only you and the AI see this. It never appears in the message word for word.';
+export const HOOK_HELP = 'Appears in the message: "I came across … and noticed …".';

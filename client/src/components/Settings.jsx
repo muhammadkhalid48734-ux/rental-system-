@@ -14,13 +14,6 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Demo delivery time',
-    note: 'Finishes the sentence “I\u2019d love to build you a free demo … and send it over ___”. Used in the first message, the AI prompt and the quick replies. Only promise what you can keep.',
-    fields: [
-      ['demoTurnaround', 'When the demo arrives', 'text', 'usually within the hour during our support hours, otherwise by the next morning (US time)', true],
-    ],
-  },
-  {
     title: 'Your details',
     note: 'Used in email footers. A postal address and unsubscribe line are expected on marketing email.',
     fields: [
@@ -31,7 +24,7 @@ const GROUPS = [
   },
 ];
 
-const PACKAGES = [1, 2, 3];
+const PLANS = [1, 2, 3];
 
 export default function Settings({ config, leads, onSave, toast, session, onLogout }) {
   const [form, setForm] = useState({ ...config });
@@ -77,34 +70,39 @@ export default function Settings({ config, leads, onSave, toast, session, onLogo
         ))}
 
         <div className="group-title">
-          <h3>Demo packages</h3>
+          <h3>Monthly plans</h3>
           <p className="hint">
-            Shown together with their setup and monthly price in the demo message. Leave monthly empty for a one-time price (the message then says “no monthly fee”).
-            These are the only prices the app ever writes.
+            The website build is free; these are the only prices the app ever writes, and only in your Quick replies. First messages and the demo delivery message never contain a price.
           </p>
         </div>
-        {PACKAGES.map((n) => (
+        <div className="card">
+          <label className="check">
+            <input type="checkbox" checked={String(form.foundingOffer).toLowerCase() === 'true'} onChange={set('foundingOffer')} />
+            <span>Founding offer: show the lower first-year price in pricing replies</span>
+          </label>
+        </div>
+        {PLANS.map((n) => (
           <div className="card" key={n}>
             <div className="group-title">
-              <h3>Package {n}{n === 2 ? ' · Recommended' : ''}</h3>
-              {n === 2 && <p className="hint">Labelled “Recommended” in the demo message.</p>}
+              <h3>Plan {n}{n === 2 ? ' · Recommended' : ''}</h3>
+              {n === 2 && <p className="hint">The plan your “How much?” reply recommends by default.</p>}
             </div>
             <div className="form-grid">
               <label className="field wide">
                 <span>Name</span>
-                <input type="text" value={form[`pkg${n}Name`] ?? ''} onChange={set(`pkg${n}Name`)} />
+                <input type="text" value={form[`plan${n}Name`] ?? ''} onChange={set(`plan${n}Name`)} />
               </label>
               <label className="field">
-                <span>Setup price (USD)</span>
-                <input type="text" inputMode="decimal" value={form[`pkg${n}Setup`] ?? ''} onChange={set(`pkg${n}Setup`)} placeholder="247" />
+                <span>Price per month (USD)</span>
+                <input type="text" inputMode="decimal" value={form[`plan${n}Price`] ?? ''} onChange={set(`plan${n}Price`)} placeholder="59" />
               </label>
               <label className="field">
-                <span>Monthly price (USD, optional)</span>
-                <input type="text" inputMode="decimal" value={form[`pkg${n}Monthly`] ?? ''} onChange={set(`pkg${n}Monthly`)} placeholder="none" />
+                <span>Founding price, first year (USD)</span>
+                <input type="text" inputMode="decimal" value={form[`plan${n}Founding`] ?? ''} onChange={set(`plan${n}Founding`)} placeholder="39" />
               </label>
               <label className="field wide">
                 <span>What's included (one line)</span>
-                <textarea rows={3} maxLength={400} value={form[`pkg${n}Note`] ?? ''} onChange={set(`pkg${n}Note`)} />
+                <textarea rows={3} maxLength={400} value={form[`plan${n}Note`] ?? ''} onChange={set(`plan${n}Note`)} />
               </label>
             </div>
           </div>

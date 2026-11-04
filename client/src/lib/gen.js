@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { genCache } from './genCache.js';
+import { PROMPT_VERSION } from './messages.js';
 
 export const KIND_BY_STAGE = {
   pitch: 'cold', fu1: 'followup1', fu2: 'followup2', fu3: 'followup3',
@@ -24,12 +25,26 @@ export function view(entry, template) {
   return { all, pos, shown, text, edited: entry.draft !== null && entry.draft !== shown.text };
 }
 
+const personalized = (v) => v.source === 'personalized' && !v.edited;
+/** Drafts saved before the version number existed count as version 1. */
+export const isOldWording = (v) => personalized(v) && (v.pv ?? 1) < PROMPT_VERSION;
+
+/**
+ * True when a lead has personalized drafts but none written under the current prompt version, and the user has
+ * no unsent edit. These are what "Regenerate old wording" rewrites; "Generate all" leaves them alone.
+ */
+export function needsNewWording(entry) {
+  if (entry.draft !== null) return false;
+  const mine = entry.versions.filter(personalized);
+  return mine.length > 0 && !mine.some((v) => !isOldWording(v));
+}
+
 /** Saves an unsent edit as its own version so replacing it on screen never loses it. */
 export function stashEdit(key, template) {
   genCache.update(key, (cur) => {
     const v = view(cur, template);
     if (!v.edited) return { ...cur, draft: null };
-    const versions = [...cur.versions, { text: cur.draft, source: v.shown.source, edited: true, at: Date.now() }].slice(-MAX_VERSIONS);
+    const versions = [...cur.versions, { text: cur.draft, source: v.shown.source, pv: v.shown.pv, edited: true, at: Date.now() }].slice(-MAX_VERSIONS);
     return { ...cur, versions, draft: null };
   });
 }
@@ -57,11 +72,12 @@ export async function requestVariant({ lead, stage, hint, template }) {
   });
   if (res.source === 'personalized') {
     genCache.update(key, (c) => {
-      const versions = [...c.versions, { text: res.text, source: 'personalized', at: Date.now() }].slice(-MAX_VERSIONS);
+      const versions = [...c.versions, { text: res.text, source: 'personalized', pv: res.promptVersion ?? PROMPT_VERSION, at: Date.now() }].slice(-MAX_VERSIONS);
       return { ...c, versions, pos: versions.length, draft: null };
     });
   } else {
-    genCache.update(key, (c) => ({ ...c, pos: 0, draft: null }));
+    // A failed rewrite must not hide the draft you already have: only switch to the template when there is none.
+    genCache.update(key, (c) => (c.versions.some((v) => v.source === 'personalized') ? { ...c, draft: null } : { ...c, pos: 0, draft: null }));
   }
   return res;
 }

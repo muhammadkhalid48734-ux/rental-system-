@@ -523,6 +523,10 @@ progress::-moz-progress-bar { background: var(--primary); }
 .lead-row > div:first-child { min-width: 0; }
 
 /* ---------------------------------------------------------------- quick replies / settings */
+.hint-bad { color: var(--danger); }
+.qr-part + .qr-part { border-top: 1px solid var(--border); padding-top: var(--s-4); }
+.qr-part h4 { font: 700 15px/1.3 var(--font-display); margin: 0; }
+.qr-part .seg { margin: var(--s-2) 0; }
 .qr-card p { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 72ch; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); }
 .form-grid .wide { grid-column: 1 / -1; }

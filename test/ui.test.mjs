@@ -154,3 +154,63 @@ test('with AI configured the card writes the personalized message itself and nev
   assert.match(card, /awaitingAI/);
   assert.match(card, /Send from account/);
 });
+
+// ---------------------------------------------------------------- messaging update
+
+const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+
+test('the delivery-time setting and wording are gone from the app source', () => {
+  const files = [...srcFiles, ...walk(path.join(root, 'server')), path.join(root, 'api/[...path].js')];
+  for (const f of files) {
+    const text = fs.readFileSync(f, 'utf8');
+    assert.ok(!/demoTurnaround|support hours|otherwise by the next morning|TURNAROUND/.test(text), path.relative(root, f));
+  }
+  const settings = read('client/src/components/Settings.jsx');
+  assert.ok(!/Demo delivery time/.test(settings));
+  assert.match(settings, /Monthly plans/);
+  assert.match(settings, /foundingOffer/);
+});
+
+test('lead form and About strip use the new hook wording and keep note and hook separate', () => {
+  for (const rel of ['client/src/components/Dialogs.jsx', 'client/src/components/LeadCard.jsx']) {
+    const text = read(rel);
+    assert.match(text, /HOOK_LABEL/);
+    assert.match(text, /HookHint/);
+    assert.match(text, /NOTE_LABEL/);
+  }
+  const ui = read('client/src/lib/ui.js');
+  assert.match(ui, /HOOK_LABEL = 'Hook: one true detail you saw on their page'/);
+  assert.match(ui, /HOOK_PLACEHOLDER = 'e\.g\. the blue and yellow castle photos'/);
+  assert.match(ui, /NOTE_LABEL = 'Note: internal facts about the problem'/);
+});
+
+test('old-wording logic: drafts from an older prompt version are flagged, never auto-skipped by edits', async () => {
+  const { isOldWording, needsNewWording } = await import('../client/src/lib/gen.js');
+  const { PROMPT_VERSION } = await import('../client/src/lib/messages.js');
+  const mk = (versions, draft = null) => ({ versions, pos: versions.length, draft, at: 1 });
+  const legacy = { text: 'a', source: 'personalized' }; // saved before version numbers existed
+  const old = { text: 'b', source: 'personalized', pv: PROMPT_VERSION - 1 };
+  const current = { text: 'c', source: 'personalized', pv: PROMPT_VERSION };
+  const edited = { text: 'd', source: 'personalized', edited: true };
+
+  assert.equal(isOldWording(legacy), true);
+  assert.equal(isOldWording(old), true);
+  assert.equal(isOldWording(current), false);
+  assert.equal(isOldWording(edited), false, 'your own edit is never "old wording"');
+  assert.equal(isOldWording({ text: 't', source: 'template' }), false);
+
+  assert.equal(needsNewWording(mk([legacy])), true);
+  assert.equal(needsNewWording(mk([legacy, old])), true);
+  assert.equal(needsNewWording(mk([old, current])), false, 'a current draft exists');
+  assert.equal(needsNewWording(mk([])), false, 'nothing to rewrite: Generate all handles it');
+  assert.equal(needsNewWording(mk([legacy], 'my unsent edit')), false, 'text you edited is never overwritten');
+  assert.equal(needsNewWording(mk([edited])), false);
+});
+
+test('Today has the bulk button, Generate all skips old drafts, the card shows the badge', () => {
+  assert.match(read('client/src/components/Today.jsx'), /Regenerate old wording/);
+  assert.match(read('client/src/components/LeadCard.jsx'), /Old wording/);
+  const batch = read('client/src/lib/batch.js');
+  assert.match(batch, /mode === 'old'/);
+  assert.match(batch, /needsNewWording/);
+});

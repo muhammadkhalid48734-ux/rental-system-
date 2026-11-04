@@ -11,13 +11,14 @@ import { createQueue } from '../server/queue.js';
 import { CSP } from '../server/csp.js';
 import { buildMessage } from '../client/src/lib/messages.js';
 import { CONFIG_DEFAULTS } from '../server/schema.js';
+import { PROMPT_VERSION } from '../server/prompts.js';
 
 const PASSWORD = 'correct horse battery';
 const SECRET = 's'.repeat(48);
 const PROD = { NODE_ENV: 'production', APP_PASSWORD: PASSWORD, SESSION_SECRET: SECRET, GROQ_API_KEY: 'gsk_test' };
 
 const GOOD =
-  `Hey Dana! Your sparkle-theme castle caught my eye. When I pulled up your site on my phone, the layout was tiny and hard to tap, and I'd guess a few parents give up before they ask about dates. I run a small remote web design studio and could put together a free private demo, with a photo gallery and online booking, ${CONFIG_DEFAULTS.demoTurnaround}. Would you want to see it?`;
+  "Hey Dana! I came across Hop & Pop Party Rentals and noticed your sparkle-theme castle. When I pulled up your site on my phone, the layout was tiny and hard to tap, so a few parents may give up before asking about dates. I run a small web design studio and I'd be glad to build you a free demo of a modern site with a gallery and a booking request form. No obligation. Want me to put one together?";
 
 async function serve(handler) {
   const server = http.createServer(handler);
@@ -209,35 +210,45 @@ test('GOOGLE_SERVICE_ACCOUNT_JSON accepts a JSON string or a file path', () => {
   assert.throws(() => loadCredentials('{ not json'), /not valid JSON/);
 });
 
-test('config: packages validate, monthly may be empty, autoMark is ignored', async () => {
+test('config: plans validate, founding offer flag, old package and delivery-time fields are gone, autoMark is ignored', async () => {
   const { call, close } = await setup({ env: {} });
   try {
     const c = (await call('GET', '/api/config')).json.config;
-    assert.equal(c.pkg1Monthly, '');
-    assert.equal(c.pkg2Name, 'Website that books for you');
-    assert.equal('autoMark' in c, false);
-    let r = await call('PUT', '/api/config', { pkg1Monthly: '', pkg3Setup: '$600', autoMark: 'true' });
+    assert.deepEqual([c.plan1Name, c.plan1Price, c.plan1Founding], ['Get Found', '59', '39']);
+    assert.deepEqual([c.plan2Name, c.plan2Price, c.plan2Founding], ['Get Booked', '99', '69']);
+    assert.deepEqual([c.plan3Name, c.plan3Price, c.plan3Founding], ['Get Paid', '179', '129']);
+    assert.equal(c.foundingOffer, 'false');
+    for (const gone of ['autoMark', 'demoTurnaround', 'pkg1Name', 'pkg2Setup', 'pkg3Monthly']) assert.equal(gone in c, false, gone);
+
+    let r = await call('PUT', '/api/config', { plan1Price: '$65', plan3Founding: '', foundingOffer: 'true', autoMark: 'true', demoTurnaround: 'x', pkg1Name: 'x' });
     assert.equal(r.status, 200);
-    assert.equal(r.json.config.pkg3Setup, '600');
-    assert.equal('autoMark' in r.json.config, false);
-    assert.equal((await call('PUT', '/api/config', { pkg1Setup: 'abc' })).status, 400);
-    assert.equal((await call('PUT', '/api/config', { pkg2Name: '' })).status, 400);
-    assert.equal((await call('PUT', '/api/config', { pkg1Setup: '' })).status, 400);
+    assert.equal(r.json.config.plan1Price, '65');
+    assert.equal(r.json.config.plan3Founding, '');
+    assert.equal(r.json.config.foundingOffer, 'true');
+    for (const gone of ['autoMark', 'demoTurnaround', 'pkg1Name']) assert.equal(gone in r.json.config, false, gone);
+    assert.equal((await call('PUT', '/api/config', { foundingOffer: 'maybe' })).status, 400);
+    assert.equal((await call('PUT', '/api/config', { plan1Price: 'abc' })).status, 400);
+    assert.equal((await call('PUT', '/api/config', { plan2Name: '' })).status, 400);
+    assert.equal((await call('PUT', '/api/config', { plan1Price: '' })).status, 400);
+    assert.equal((await call('PUT', '/api/config', { plan2Founding: '12x' })).status, 400);
   } finally { await close(); }
 });
 
-test('config: demoTurnaround has a default, is editable, stays one line, and rejects links, prices and empty', async () => {
-  const { call, close } = await setup({ env: {} });
+test('leads: the hook is limited to 12 words (an unchanged older hook still saves)', async () => {
+  const { call, store, close } = await setup({ env: {} });
   try {
-    const c = (await call('GET', '/api/config')).json.config;
-    assert.equal(c.demoTurnaround, 'usually within the hour during our support hours, otherwise by the next morning (US time)');
-    const r = await call('PUT', '/api/config', { demoTurnaround: '  usually same day,\n within 4 working hours  ' });
-    assert.equal(r.status, 200);
-    assert.equal(r.json.config.demoTurnaround, 'usually same day, within 4 working hours');
-    for (const bad of ['', '   ', 'x'.repeat(161), 'see https://example.com', 'for $50']) {
-      assert.equal((await call('PUT', '/api/config', { demoTurnaround: bad })).status, 400, JSON.stringify(bad));
-    }
-    assert.equal((await call('GET', '/api/config')).json.config.demoTurnaround, 'usually same day, within 4 working hours');
+    const twelve = 'one two three four five six seven eight nine ten eleven twelve';
+    const lead = (await call('POST', '/api/leads', { leads: [{ name: 'Hook Co', hook: twelve }] })).json.created[0];
+    assert.equal(lead.hook, twelve);
+    assert.equal((await call('POST', '/api/leads', { leads: [{ name: 'Long Hook Co', hook: `${twelve} thirteen` }] })).status, 400);
+    assert.equal((await call('PATCH', `/api/leads?id=${lead.id}`, { hook: `${twelve} thirteen` })).status, 400);
+    assert.equal((await call('PATCH', `/api/leads?id=${lead.id}`, { hook: 'the blue and yellow castle photos' })).status, 200);
+    // a hook saved before the limit existed must not block other edits that resend it unchanged
+    const rows = await store.getRows('Leads');
+    const i = rows.findIndex((r) => r[0] === lead.id);
+    const long = `${twelve} thirteen fourteen`;
+    await store.updateRow('Leads', i, rows[i].map((v, k) => (k === 9 ? long : v)));
+    assert.equal((await call('PATCH', `/api/leads?id=${lead.id}`, { hook: long, city: 'Mesa' })).status, 200);
   } finally { await close(); }
 });
 
@@ -326,32 +337,41 @@ test('generate: two violations (or two empty answers) fall back to the offline t
   }
 });
 
-test('generate: the delivery time from Config reaches the prompt, is enforced, and the template fallback uses it', async () => {
-  const custom = 'usually same day, within 4 working hours (US Eastern)';
-  const missing = GOOD.replace(CONFIG_DEFAULTS.demoTurnaround, 'whenever I get to it');
-  const llm = fakeLlm(missing, GOOD.replace(CONFIG_DEFAULTS.demoTurnaround, custom));
+test('generate: a delivery-time promise, a price or "free website" is rejected and retried; the template fallback has none', async () => {
+  const llm = fakeLlm(GOOD.replace('No obligation.', 'No obligation, ready within the hour.'), GOOD);
   const t = await genSetup(llm);
   try {
-    await t.call('PUT', '/api/config', { demoTurnaround: custom });
     const r = await gen(t);
     assert.equal(r.json.source, 'personalized');
-    assert.ok(r.json.text.includes(custom));
-    assert.equal(llm.calls.length, 2, 'first draft lacked the configured wording, so it was retried once');
-    assert.match(llm.calls[1].user, /previous draft was rejected because: it must state the demo delivery time word for word as: "usually same day/);
+    assert.equal(r.json.promptVersion, PROMPT_VERSION);
+    assert.equal(llm.calls.length, 2);
+    assert.match(llm.calls[1].user, /previous draft was rejected because: it promises when or how fast something will arrive/);
     for (const c of llm.calls) {
-      assert.ok(c.system.includes(custom) && !c.system.includes(CONFIG_DEFAULTS.demoTurnaround));
-      assert.ok(c.user.includes(custom));
+      assert.ok(!c.system.includes('usually within the hour during our support hours'));
+      assert.ok(!c.user.includes('support hours'));
     }
   } finally { await t.close(); }
 
-  const t2 = await genSetup(fakeLlm('Hi! within the hour of you saying yes, I will build you a site.', 'Hi! within the hour of you saying yes, I will build you a site.'));
+  const bad = GOOD.replace('free demo', 'free website');
+  const t2 = await genSetup(fakeLlm(bad, bad));
   try {
-    await t2.call('PUT', '/api/config', { demoTurnaround: custom });
     const r = await gen(t2);
     assert.equal(r.json.source, 'template');
-    assert.ok(r.json.text.includes(`send it over ${custom}.`), 'template fallback uses the configured wording');
-    assert.ok(!/within the hour of you saying yes/.test(r.json.text));
+    assert.equal(r.json.promptVersion, PROMPT_VERSION);
+    assert.match(r.json.reason, /free website/);
+    assert.doesNotMatch(r.json.text, /within the hour|support hours|saying yes|free website|\$\d/i);
+    assert.match(r.json.text, /free demo/);
   } finally { await t2.close(); }
+});
+
+test('generate: the photo-permission reply always ends with "You\'ll have it shortly."', async () => {
+  const draft = 'Hi Dana! Thanks so much for getting back to me. Would it be okay if I use a few photos from your page in a private demo? Only you would see it.';
+  const t = await genSetup(fakeLlm(draft));
+  try {
+    const r = await gen(t, { kind: 'replyAck' });
+    assert.equal(r.json.source, 'personalized');
+    assert.ok(r.json.text.endsWith("You'll have it shortly."));
+  } finally { await t.close(); }
 });
 
 test('generate: provider errors are clear and never look like a login failure', async () => {
@@ -411,22 +431,28 @@ test('leads: PATCH and DELETE accept the id as ?id= (single path segment) as wel
   } finally { await t.close(); }
 });
 
-test('generate: demo messages get the exact link and Config packages substituted by the server', async () => {
-  const draft = 'Hi Dana! Your private demo is ready at [[LINK]]. Only you have this link, and everything is easy to change.\n[[PACKAGES]]';
+test('generate: demo messages get the exact link and the fixed closing sentence, and never a price or package list', async () => {
+  const draft = 'Hi Dana! Your private demo is ready at [[LINK]]. Only you have this link and nothing is public. The calendar and the form in this version are for show, so you can see the layout. Tell me what to change: colors, wording, items, prices or photos.';
   const llm = fakeLlm(draft);
   const t = await genSetup(llm);
   try {
     await t.call('PATCH', `/api/leads/${t.lead.id}`, { demoLink: 'https://demo.example/hoppop' });
-    await t.call('PUT', '/api/config', { pkg2Monthly: '' });
     const r = await gen(t, { kind: 'demo' });
     assert.equal(r.json.source, 'personalized');
     assert.ok(r.json.text.includes('https://demo.example/hoppop'));
-    assert.ok(r.json.text.includes('1) Website: $247 setup, no monthly fee'));
-    assert.ok(r.json.text.includes('2) Website that books for you (Recommended): $297 setup, no monthly fee'));
-    assert.ok(r.json.text.includes('3) Book, pay & sign online: $597 setup + $79/month'));
-    assert.match(r.json.text, /Cancel anytime, no contract, and your website, domain and photos stay yours\.$/);
+    assert.ok(r.json.text.endsWith("If you'd like to know how it works and what it costs, just ask."));
+    assert.doesNotMatch(r.json.text, /\$|Recommended|setup|monthly|Get Found|Get Booked|Get Paid/i);
     assert.ok(!llm.calls[0].user.includes('demo.example'), 'link is not sent to the provider');
+    assert.ok(!/Get Found|Get Booked|Get Paid|\$\d/.test(llm.calls[0].user + llm.calls[0].system.replace(/\$99\/month/, '')), 'no plans or prices in the demo prompt');
   } finally { await t.close(); }
+
+  const priced = `${draft} It is $99/month.`;
+  const t2 = await genSetup(fakeLlm(priced, priced));
+  try {
+    await t2.call('PATCH', `/api/leads/${t2.lead.id}`, { demoLink: 'https://demo.example/hoppop' });
+    const r = await gen(t2, { kind: 'demo' });
+    assert.equal(r.json.source, 'template', 'a priced demo message is rejected');
+  } finally { await t2.close(); }
 });
 
 test('generate: earlier messages sent to the lead reach the prompt; undone ones do not', async () => {

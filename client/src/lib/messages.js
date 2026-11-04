@@ -1,7 +1,7 @@
 // All outgoing copy lives here. Honesty rules:
 //  - never claim a site is already built (the pitch offers to build a demo after a yes)
 //  - never hide that this is a small remote studio (quick reply says Pakistan plainly)
-//  - no link in the first DM
+//  - no link, no price and no delivery-time promise in any DM
 
 export const PROBLEMS = {
   outdated: 'Outdated site',
@@ -32,41 +32,57 @@ export const money = (v) => {
   return s ? `$${s}` : '';
 };
 
-// ---- demo packages (names and prices come only from Config) --------------------------------
+// ---- plans (names and prices come only from Config; the website build is free) --------------
 
-export const RECOMMENDED_PACKAGE = 2;
+/** Bump this whenever the system prompt or the offline templates change in a way that makes old drafts stale. */
+export const PROMPT_VERSION = 2;
 
-export function packages(config) {
+export const RECOMMENDED_PLAN = 2;
+
+export const TERMS_LINE = 'The website build is free. 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you.';
+
+const cleanPrice = (v) => String(v ?? '').trim().replace(/^\$/, '');
+
+export const foundingOn = (config) => String(config.foundingOffer ?? '').toLowerCase() === 'true';
+
+export function plans(config) {
   return [1, 2, 3].map((n) => ({
     n,
-    name: String(config[`pkg${n}Name`] || '').trim(),
-    setup: String(config[`pkg${n}Setup`] || '').trim().replace(/^\$/, ''),
-    monthly: String(config[`pkg${n}Monthly`] || '').trim().replace(/^\$/, ''),
-    note: String(config[`pkg${n}Note`] || '').trim(),
-    recommended: n === RECOMMENDED_PACKAGE,
+    name: String(config[`plan${n}Name`] || '').trim(),
+    price: cleanPrice(config[`plan${n}Price`]),
+    founding: cleanPrice(config[`plan${n}Founding`]),
+    note: String(config[`plan${n}Note`] || '').trim(),
+    recommended: n === RECOMMENDED_PLAN,
   }));
 }
 
-/** Setup and monthly always appear together; no monthly price reads "no monthly fee". */
-export const priceLine = (p) =>
-  p.monthly ? `${money(p.setup)} setup + ${money(p.monthly)}/month` : `${money(p.setup)} setup, no monthly fee`;
-
-export function packagesBlock(config) {
-  return packages(config)
-    .map((p) => `${p.n}) ${p.name}${p.recommended ? ' (Recommended)' : ''}: ${priceLine(p)}`)
-    .join('\n');
+/** "$59/month", or with the founding offer on "$39/month for the first year, then $59/month". */
+export function planPrice(p, config) {
+  const regular = `${money(p.price)}/month`;
+  return foundingOn(config) && p.founding ? `${money(p.founding)}/month for the first year, then ${regular}` : regular;
 }
 
-export const CLOSING_LINE = 'Cancel anytime, no contract, and your website, domain and photos stay yours.';
-
-/** Every dollar amount a message may legitimately contain. */
+/** Every dollar amount a pricing reply may legitimately contain. */
 export function allowedAmounts(config) {
   const set = new Set();
-  for (const p of packages(config)) {
-    if (p.setup) set.add(Number(p.setup));
-    if (p.monthly) set.add(Number(p.monthly));
+  for (const p of plans(config)) {
+    if (p.price) set.add(Number(p.price));
+    if (p.founding) set.add(Number(p.founding));
   }
   return set;
+}
+
+// ---- hook: one true detail from their page, shown in the message ---------------------------
+
+export const HOOK_MAX_WORDS = 12;
+export const GENERIC_HOOK_WORDS = ['great', 'amazing', 'best', 'wonderful', 'awesome', 'fantastic', 'excellent', 'incredible', 'perfect', 'lovely', 'nice'];
+
+export const hookWordCount = (hook) => String(hook || '').trim().split(/\s+/).filter(Boolean).length;
+
+/** Generic praise words found in a hook (it should be a concrete detail, not a compliment). */
+export function genericHookWords(hook) {
+  const words = String(hook || '').toLowerCase().match(/[a-z']+/g) || [];
+  return GENERIC_HOOK_WORDS.filter((w) => words.includes(w));
 }
 
 const greeting = (lead) => {
@@ -90,60 +106,45 @@ const problemSentence = (lead) => {
   }
 };
 
-const benefitLine = (lead) => {
-  switch (lead.problem) {
-    case 'down':
-      return 'A working site means people clicking from Facebook or Google land on your rentals instead of a dead end.';
-    case 'parked':
-      return 'A real site on your link means anyone who clicks it lands on your rentals instead of a dead end.';
-    case 'nosite':
-      return 'A simple site with a gallery lets people find you on Google and see your lineup without messaging you first.';
-    case 'social':
-      return 'A site keeps your full lineup in one place, so customers can browse and check dates without scrolling through old posts.';
-    case 'outdated':
-    default:
-      return 'Online date-checking and booking means customers can see what is open and request it without messaging you for every inquiry.';
-  }
-};
-
 const hookLine = (lead) => {
   const hook = String(lead.hook || '').trim().replace(/[.!\s]+$/, '');
-  return hook ? `I came across ${lead.name} and love ${hook}.` : `I came across ${lead.name} and like what you offer.`;
+  return hook ? `I came across ${lead.name} and noticed ${hook}.` : `I came across ${lead.name} and like what you offer.`;
 };
 
-/** The configured promise about when the demo arrives (Settings → Demo delivery time). */
-export const turnaround = (config) => String(config.demoTurnaround || '').trim() || '[set the demo delivery time in Settings]';
+const pitchTail = () =>
+  "I run a small web design studio and I'd be glad to build you a free demo of a modern site with a gallery and a booking request form. No obligation. Want me to put one together?";
 
-const pitchTail = (config) =>
-  `I run a small web design studio and I'd love to build you a free demo of a modern website with a gallery and online booking, and send it over ${turnaround(config)}. It's private, no cost, no obligation. Want me to put one together?`;
+export const REPLY_ENDING = "You'll have it shortly.";
+export const DEMO_CLOSING = "If you'd like to know how it works and what it costs, just ask.";
 
-export function buildMessage(stage, lead, config) {
+// config is accepted for call-site compatibility; the offline templates no longer read it (no prices, no timing).
+export function buildMessage(stage, lead) {
   const hi = greeting(lead);
   switch (stage.key) {
     case 'pitch':
-      return `${hi}\n\n${hookLine(lead)} ${problemSentence(lead)}\n\n${pitchTail(config)}`;
+      return `${hi}\n\n${hookLine(lead)} ${problemSentence(lead)}\n\n${pitchTail()}`;
     case 'fu1':
-      return `${hi} Just floating my message back to the top in case it got buried. I'm still happy to put together that free private demo for ${lead.name} whenever you're ready, no pressure. Want me to build one?`;
+      return `${hi} Just bringing my message back up in case it got buried. I'm still happy to build a free demo for ${lead.name}, no pressure at all. Want me to put one together?`;
     case 'fu2':
-      return `${hi} One quick thought on why I reached out: ${benefitLine(lead)} The free demo is still on offer if you're curious, and it's private with no obligation.`;
+      return `${hi} One more reason I reached out: with a booking request form, customers can send their date and item without messaging you first, so your DMs stay for real conversations. The free demo for ${lead.name} is still on offer. Would you like to see it?`;
     case 'fu3':
-      return `${hi} Last note from me, I don't want to clutter your inbox. If a new website ever makes sense for ${lead.name}, just say the word and I'll build the free demo. Either way, I wish you a great season!`;
+      return `${hi} I won't keep filling your inbox, so this is my last note. If a website ever becomes useful for ${lead.name}, you know where to find me. Wishing you a great season!`;
     case 'reply':
-      return `${hi} Thanks so much for getting back to me! To make the demo feel like ${lead.name}, would it be okay if I use a few photos from your page in a private demo? Only you would see it, and I'll remove any photo you'd rather I didn't use. If you prefer, you can also send me a few of your favorites directly.`;
+      return `${hi} Thanks so much for getting back to me! To make the demo feel like ${lead.name}, would it be okay if I use a few photos from your page in a private demo? Only you would see it, and I'll remove any photo you'd rather I didn't use. If you prefer, you can also send me a few of your favorites directly. ${REPLY_ENDING}`;
     case 'demo':
-      return `${hi} Thanks again for the go-ahead! Here's the private demo I built for ${lead.name}: ${String(lead.demoLink || '').trim()}\n\nOnly you have this link, and everything is easy to change: photos, wording, whatever you'd like different.\n\nIf you'd like it live, here are the options (setup and monthly shown together):\n${packagesBlock(config)}\n\n${CLOSING_LINE} No hard feelings if it's not for you.`;
+      return `${hi} Thanks again for the go-ahead! Here's the private demo I built for ${lead.name}: ${String(lead.demoLink || '').trim()}\n\nOnly you have this link, and nothing is public. The calendar and the form in this version are for show, so you can see the layout. Tell me what to change: colors, wording, items, prices or photos.\n\n${DEMO_CLOSING}`;
     case 'nudge1':
-      return `${hi} Quick check: did the demo link open okay for you? Happy to adjust anything you spot.`;
+      return `${hi} Quick check: did the demo link open okay on your phone? Happy to change anything you spot.`;
     case 'nudge2':
-      return `${hi} What would make the demo an easy yes for you? I'm happy to change the layout, wording or prices, and I can remove any photo you'd rather not have in there.`;
+      return `${hi} Is there anything that would make you say yes to the demo? I can swap photos, change items or prices, and remove any photo you'd rather not have in it.`;
     case 'nudge3':
-      return `${hi} Last note from me on the demo, no pressure at all. If you'd like it live, just reply 'go live' and I'll take care of it. If not, no hard feelings.`;
+      return `${hi} Last note from me on the demo. I'll keep it available a few more days, and if you'd like it live, just reply "go live". If not, no hard feelings.`;
     default:
       return '';
   }
-}
+};
 
-const BASE_SUBJECT = (lead) => `A free website demo for ${lead.name}`;
+const BASE_SUBJECT = (lead) => `A free demo for ${lead.name}`;
 
 export function emailSubject(stage, lead) {
   switch (stage.key) {
@@ -227,41 +228,67 @@ export function applySend(lead, st, account, nowIso) {
 
 // ---- quick replies -----------------------------------------------------------------------
 
+/** Step 2 of "How much?": recommend one plan, with the terms line, and mention the cheaper and the fuller plan. */
+export function recommendReply(config, n = RECOMMENDED_PLAN) {
+  const all = plans(config);
+  const pick = all.find((p) => p.n === n) || all[RECOMMENDED_PLAN - 1];
+  const cheaper = all.find((p) => p.n === pick.n - 1);
+  const fuller = all.find((p) => p.n === pick.n + 1);
+  const also = [
+    cheaper && `${cheaper.name} is ${planPrice(cheaper, config)} if you'd like to start smaller`,
+    fuller && `${fuller.name} is ${planPrice(fuller, config)} if you want more built in`,
+  ].filter(Boolean);
+  return `Thanks! From what you've told me, I'd suggest ${pick.name} at ${planPrice(pick, config)}. ${pick.note}\n\n${TERMS_LINE}${also.length ? `\n\nFor comparison: ${also.join(', and ')}.` : ''}`;
+}
+
 export function quickReplies(config) {
   const studio = String(config.studio || '').trim();
-  const studioName = studio ? `my studio, ${studio},` : 'my studio';
-  const block = packagesBlock(config);
-  const included = packages(config)
-    .map((p) => `${p.n}) ${p.name}${p.recommended ? ' (Recommended)' : ''}: ${p.note}`)
-    .join('\n\n');
+  const studioName = studio ? ` (${studio})` : '';
+  const all = plans(config);
+  const first = all[0];
+  const startsAt = foundingOn(config) && first.founding
+    ? `${money(first.founding)}/month for the first year (${money(first.price)}/month after)`
+    : `${money(first.price)}/month`;
   return [
     {
       title: 'How much?',
-      text: `The demo is free. If you like it and want it live, there are three options (setup and monthly shown together):\n${block}\n\n${CLOSING_LINE}`,
-    },
-    {
-      title: "What's included?",
-      text: `Here's what each option includes:\n\n${included}\n\nPrices:\n${block}`,
+      parts: [
+        { label: 'Step 1 · Ask first', text: "Happy to help with that! So I can point you to the right option, roughly how many items do you rent out, and how do bookings come in right now (DMs, calls, texts)?" },
+        { label: 'Step 2 · Recommend a plan', plan: true, text: recommendReply(config) },
+        { label: 'If they ask the price before the demo', text: `Plans start at ${startsAt} and the website build is free. The demo is free and you pay nothing unless you want it live.` },
+      ],
     },
     {
       title: 'Where are you based?',
-      text: `Full transparency: I run a small, remote web design studio, and ${studioName} is based in Pakistan. I work with US businesses online, so everything happens over DM and email. The demo is free, so you can judge the work before deciding anything.`,
+      text: `Full transparency: I run a small, remote web design studio${studioName} based in Pakistan. I work with US businesses online, so everything happens over DM and email. I'm happy to jump on a video call or send my portfolio if you'd like to see more.`,
     },
     {
-      title: 'Is it free?',
-      text: "The demo is completely free and private, with no obligation. You only pay if you love it and want it live, and I'll send the options and prices then. Cancel anytime, no contract.",
+      title: 'Do I own the site?',
+      text: "You own your domain, photos and text, always. The site itself runs on my hosting while you're a customer, and if you ever stop I send you your site files.",
     },
     {
-      title: 'Examples?',
-      text: "Rather than show you someone else's site, I'd like to build one for your business so you can judge it with your own name, photos and rentals. That's what the free demo is. Want me to put one together?",
+      title: 'Facebook is enough',
+      text: "Facebook is great for showing your work, and I'd keep using it! A website adds what Facebook can't: people searching on Google can find you, they see your whole lineup in one place, and a booking request form lets them send their date and item without messaging you first, so your DMs stay for real conversations. The demo is free, so you can compare the two.",
     },
     {
-      title: 'What do you need from me?',
-      text: `Just a yes, and permission to use a few photos from your page in a private demo. If you have a price list, service area or hours you'd like shown, send them over, but it's not required. I'll message you the private link ${turnaround(config)}.`,
+      title: 'Too expensive',
+      text: `Totally understand. My smallest plan, ${first.name}, is ${planPrice(first, config)}. ${TERMS_LINE} The demo is free too, so you can see it with your own photos before deciding anything.`,
     },
     {
-      title: 'How fast is the demo?',
-      text: `I'll send the private demo link ${turnaround(config)}. It's free and there's no obligation.`,
+      title: "I'll think about it",
+      text: "Of course, no rush! The demo is free and you pay nothing unless you want it live, so there's nothing to decide yet. If there's anything you'd want changed, tell me and I'll adjust it.",
+    },
+    {
+      title: 'How do reviews work?',
+      text: "After a rental, every customer gets the link to your Google reviews. There's no filtering, so happy and unhappy customers get the same link, and we never pay for reviews. Real reviews from real customers are what build trust with new ones.",
+    },
+    {
+      title: 'How does double-booking protection work?',
+      text: "A date is blocked when you confirm a booking or when the deposit arrives. Pending requests don't block the date, so a request that never turns into a booking can't lock you out. If you prefer, you can set a 24-hour hold so a pending request holds the date for 24 hours.",
+    },
+    {
+      title: 'What if I stop?',
+      text: "After the 3-month minimum you can cancel anytime. If you stop, we send you your site files, and your domain, photos and text stay yours.",
     },
     {
       title: 'Not interested',

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { fmtTime } from '../lib/dates.js';
 import { batch } from '../lib/batch.js';
+import { cacheKey, needsNewWording } from '../lib/gen.js';
+import { genCache } from '../lib/genCache.js';
 import { buildMessage, getStage, PROBLEMS } from '../lib/messages.js';
 import { dueBadge, shortStage } from '../lib/ui.js';
 import { I, Icon } from './icons.jsx';
@@ -10,12 +12,20 @@ const CHANNEL = { ig: 'Instagram', fb: 'Facebook', email: 'Email' };
 
 function GenerateAll({ items, env }) {
   const b = useSyncExternalStore(batch.subscribe, batch.getSnapshot, batch.getSnapshot);
+  // Re-render when drafts change so the old-wording count stays current.
+  useSyncExternalStore(genCache.subscribe, genCache.getVersion, genCache.getVersion);
   const off = !env.llm.configured;
+  const oldCount = items.filter((it) => needsNewWording(genCache.get(cacheKey(it.lead, it.stage)))).length;
   return (
     <div className="queue-top">
       {!b.running && (
         <button className="btn btn-secondary btn-sm" disabled={off || items.length === 0} onClick={() => batch.start(items)}>
           <Icon as={I.Sparkle} /> Generate all for today
+        </button>
+      )}
+      {!b.running && oldCount > 0 && (
+        <button className="btn btn-secondary btn-sm" disabled={off} onClick={() => batch.start(items, 'old')}>
+          <Icon as={I.ArrowsClockwise} /> Regenerate old wording ({oldCount})
         </button>
       )}
       {off && <p className="inline-note"><Icon as={I.Info} /><span>AI personalization is off. Settings explains how to turn it on.</span></p>}

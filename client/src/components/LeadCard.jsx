@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { copyText } from '../lib/clipboard.js';
 import { EMPTY, genCache } from '../lib/genCache.js';
-import { cacheKey, errorMessage, goTo, requestVariant, stashEdit, view } from '../lib/gen.js';
-import { buildMessage, getStage, hasLink, hasPlaceholder, PROBLEMS, toEmailText } from '../lib/messages.js';
-import { dueBadge } from '../lib/ui.js';
+import { cacheKey, errorMessage, goTo, isOldWording, requestVariant, stashEdit, view } from '../lib/gen.js';
+import { buildMessage, getStage, HOOK_MAX_WORDS, hasLink, hasPlaceholder, hookWordCount, PROBLEMS, toEmailText } from '../lib/messages.js';
+import { dueBadge, HOOK_HELP, HOOK_LABEL, HOOK_PLACEHOLDER, NOTE_HELP, NOTE_LABEL } from '../lib/ui.js';
+import HookHint from './HookHint.jsx';
 import { I, Icon } from './icons.jsx';
 
 function MoreMenu({ items }) {
@@ -59,6 +60,7 @@ function AboutStrip({ lead, actions }) {
   const save = (field, value) => {
     const v = value.trim();
     if (v === (lead[field] || '')) return;
+    if (field === 'hook' && hookWordCount(v) > HOOK_MAX_WORDS) return; // HookHint explains; nothing is saved until it fits
     actions.patch(lead.id, { [field]: v }, undefined, { quiet: true });
   };
   const bothEmpty = !hook.trim() && !note.trim();
@@ -77,7 +79,7 @@ function AboutStrip({ lead, actions }) {
       </div>
       <div className="about-fields">
         <label className="field">
-          <span className="label">Note</span>
+          <span className="label">{NOTE_LABEL}</span>
           <textarea
             rows={2}
             value={note}
@@ -86,18 +88,23 @@ function AboutStrip({ lead, actions }) {
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => save('note', note)}
           />
+          <span className="hint">{NOTE_HELP}</span>
         </label>
-        <label className="field">
-          <span className="label">Hook: finishes “I love …”</span>
+        <div className="field">
+          <label className="field-inner" htmlFor={`hook-${lead.id}`}>
+            <span className="label">{HOOK_LABEL}</span>
+          </label>
           <input
+            id={`hook-${lead.id}`}
             type="text"
             value={hook}
-            maxLength={300}
-            placeholder="e.g. your pastel balloon arches"
+            placeholder={HOOK_PLACEHOLDER}
             onChange={(e) => setHook(e.target.value)}
             onBlur={() => save('hook', hook)}
           />
-        </label>
+          <span className="hint">{HOOK_HELP}</span>
+          <HookHint value={hook} />
+        </div>
       </div>
       {bothEmpty && (
         <p className="inline-warn" role="note">
@@ -426,6 +433,9 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
             <span className={`tag ${v.shown.source === 'personalized' ? 'tag-ok' : ''}`}>
               {v.shown.source === 'personalized' ? 'Personalized' : 'Template'}
             </span>
+            {v.shown.source === 'personalized' && !edited && isOldWording(v.shown) && (
+              <span className="tag tag-warn" title="Written before the messaging was updated. Regenerate to use the new wording.">Old wording</span>
+            )}
             <div className="versions" role="group" aria-label="Previous versions">
               <button className="btn btn-secondary btn-icon" aria-label="Previous version" disabled={v.pos === 0 || generating} onClick={() => onGoto(v.pos - 1)}>
                 <Icon as={I.CaretLeft} />

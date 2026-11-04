@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { I, Icon } from './icons.jsx';
-import { PROBLEMS } from '../lib/messages.js';
+import { HOOK_MAX_WORDS, hookWordCount, PROBLEMS } from '../lib/messages.js';
+import { HOOK_HELP, HOOK_LABEL, HOOK_PLACEHOLDER, NOTE_HELP, NOTE_LABEL } from '../lib/ui.js';
+import HookHint from './HookHint.jsx';
 import { IMPORT_STATUSES, cellText, parsePaste, resolveProgress } from '../lib/importer.js';
 import { nextAction } from '../lib/schedule.js';
 import { fmtShortDate, parseDay, ymd } from '../lib/dates.js';
@@ -48,6 +50,7 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!f.name.trim()) return setErr('Business name is required.');
+    if (hookWordCount(f.hook) > HOOK_MAX_WORDS) return setErr(`The hook must be ${HOOK_MAX_WORDS} words or fewer: one true detail you saw on their page.`);
     setSaving(true);
     setErr('');
     try {
@@ -91,10 +94,16 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
               {Object.entries(PROBLEMS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </label>
-          {text('hook', 'Hook: finishes “I love …” (e.g. your pastel balloon arches)')}
+          <div className="field wide">
+            <label htmlFor="lead-hook"><span>{HOOK_LABEL}</span></label>
+            <input id="lead-hook" type="text" value={f.hook ?? ''} placeholder={HOOK_PLACEHOLDER} onChange={set('hook')} />
+            <span className="hint">{HOOK_HELP}</span>
+            <HookHint value={f.hook} />
+          </div>
           <label className="field wide">
-            <span>Note</span>
+            <span>{NOTE_LABEL}</span>
             <textarea rows={2} value={f.note ?? ''} onChange={set('note')} />
+            <span className="hint">{NOTE_HELP}</span>
           </label>
           <label className="field">
             <span>Send from account</span>

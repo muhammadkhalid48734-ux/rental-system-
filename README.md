@@ -118,15 +118,11 @@ Before any `git push` or deploy, check `git status` and make sure no `.env`, key
 
 **Messages**: `timestamp, leadId, kind, text`. Written when you press **Mark sent**, with the text exactly as you sent it (after your edits). `kind` is `cold`, `followup1-3`, `replyAck`, `demo`, `demoNudge1-3`. **Undo** appends a compensating row (`<kind>:undo`, empty text) instead of deleting anything. These are the "earlier messages" the AI is told not to repeat.
 
-**Config**: `key, value` for `accA, accB, cap, gaps, yourName, studio, address, demoTurnaround` and the three demo packages (`pkgNName`, `pkgNSetup`, `pkgNMonthly`, `pkgNNote`). All editable in Settings.
+**Config**: `key, value` for `accA, accB, cap, gaps, yourName, studio, address`, the three monthly plans (`planNName`, `planNPrice`, `planNFounding`, `planNNote`) and `foundingOffer`. All editable in Settings. Older rows for fields that no longer exist (`demoTurnaround`, `pkgN…`) stay in the Sheet but are ignored.
 
-### Demo delivery time
+### Monthly plans
 
-`demoTurnaround` (Settings → *Demo delivery time*) finishes the sentence "I'd love to build you a free demo … and send it over ___". Default: *usually within the hour during our support hours, otherwise by the next morning (US time)*. It is the only delivery promise the app ever writes: the first-message template, the AI system prompt and task, the "What do you need from me?" and "How fast is the demo?" quick replies all read it from Config. The AI must include it word for word in a first message, and any draft that promises a different delivery time (for example "within the hour of you saying yes" or "in 30 minutes") is rejected and retried, then replaced by the template. One line, up to 160 characters, no links or prices. Only promise what you can keep.
-
-### Demo packages
-
-Defaults: **Website** ($247 setup, no monthly fee), **Website that books for you** ($297 setup + $33/month, labelled "Recommended"), **Book, pay & sign online** ($597 setup + $79/month). Monthly may be empty; the demo message then says "no monthly fee". The demo message always shows setup and monthly together for every package and ends with: cancel anytime, no contract, and your website, domain and photos stay yours. The app writes no other prices anywhere.
+The website build is free. Defaults: **Get Found** $59/month, **Get Booked** $99/month (labelled "Recommended"), **Get Paid** $179/month. The **founding offer** flag (default off, Settings → *Monthly plans*) switches pricing replies to $39 / $69 / $129 for the first year. Each plan's one-line description is editable. The terms line used in pricing replies is fixed: "The website build is free. 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you." Prices appear only in **Quick replies**; first messages, follow-ups and the demo delivery message never contain a price, a link (apart from the demo link itself) or a delivery-time promise.
 
 ## How the day works
 
@@ -162,10 +158,12 @@ With a Groq key set, the personalized message is written automatically the first
 - Optional **Hint** ("shorter", "don't mention phones"). It can change tone or length but never the rules.
 - **Versions ◀ ▶** keep every draft, including your own edits, so nothing is lost. Replacing text you edited needs an in-page confirmation, and your edit is saved as a version first.
 - Badge: **Personalized** or **Template**. If both hook and note are empty you get a reminder: the more specific your note, the more personal the message.
+- **Hook** is one true detail you saw on their page (up to 12 words, e.g. "the blue and yellow castle photos"); it appears in the message as "I came across … and noticed …". Generic praise words ("great", "amazing", "best", "wonderful") get a warning. **Note** is internal: the facts about the problem.
+- **Old wording**: drafts carry the prompt version they were written with. After the messaging changes (`PROMPT_VERSION` in `client/src/lib/messages.js`), older drafts show an **Old wording** badge and are skipped by **Generate all**. **Regenerate old wording** (Today) rewrites them one at a time under the same rate limit, adds the new text as a new version, and never touches text you edited.
 - **Generate all for today** goes through the Today cards one at a time with "7 of 20" progress and a Cancel button. It skips cards you edited and cards that already have a personalized draft, pauses to stay under `GROQ_MAX_RPM`, stops cleanly if the provider rate-limits, and leaves the rest as templates.
 - Generated text is cached per lead and step in your browser, so reopening the app does not regenerate.
 
-The server builds every prompt itself from the stored lead, so the browser can only send a lead id, a message kind, an optional hint and earlier drafts. Every draft is checked before it is returned: no link, price or website address outside demo messages; first messages 110 words or fewer; follow-ups 70 or fewer; no markdown; at most one emoji; nothing that implies the site is already built ("I built", "already built", …). One failed draft is retried with the problem stated; if it fails again you get the template. In demo messages the AI writes the intro and the server inserts the exact demo link and the package list from Config.
+The server builds every prompt itself from the stored lead, so the browser can only send a lead id, a message kind, an optional hint and earlier drafts. Every draft is checked before it is returned: no link, price or website address (the demo message holds only the demo link); no promise about when or how fast anything arrives ("within the hour", "next morning", "24 hours", "same day", "in 30 minutes", …); no mention of automation, a follow-up system, a reviews system or monthly plans; never "free website" (it is a "free demo"); first messages 35 to 90 words, offering the free demo, saying "No obligation", using the hook and ending with a question; follow-ups 70 or fewer; no markdown; at most one emoji; nothing that implies the site is already built ("I built", "already built", …). The photo-permission reply always ends with "You'll have it shortly." One failed draft is retried with the problem stated; if it fails again you get the offline template. In demo messages the AI writes the text and the server inserts the exact demo link and the closing sentence; there is no price or package list in them.
 
 ### Import
 

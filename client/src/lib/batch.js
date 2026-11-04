@@ -1,4 +1,4 @@
-import { cacheKey, errorMessage, requestVariant, view } from './gen.js';
+import { cacheKey, errorMessage, needsNewWording, requestVariant, view } from './gen.js';
 import { genCache } from './genCache.js';
 
 // "Generate all for today": one lead at a time, outside React so it keeps running across tab switches.
@@ -44,15 +44,26 @@ export const batch = {
     if (!state.running) set({ ...initial });
   },
 
-  /** items: [{ lead, stage, template }] in on-screen order. */
-  async start(items) {
+  /**
+   * items: [{ lead, stage, template }] in on-screen order.
+   * mode 'new' writes a draft for leads that have none; mode 'old' rewrites leads whose drafts all came from an
+   * older prompt version. Neither ever touches text the user edited, and 'new' skips old-wording drafts.
+   */
+  async start(items, mode = 'new') {
     if (state.running) return;
     const todo = [];
     let skippedEdited = 0;
     let already = 0;
+    let oldLeft = 0;
     for (const it of items) {
       const entry = genCache.get(cacheKey(it.lead, it.stage));
-      if (view(entry, it.template).edited) skippedEdited++;
+      const edited = view(entry, it.template).edited;
+      const old = needsNewWording(entry);
+      if (mode === 'old') {
+        if (edited && entry.versions.some((v) => v.source === 'personalized')) skippedEdited++;
+        else if (old) todo.push(it);
+      } else if (edited) skippedEdited++;
+      else if (old) oldLeft++;
       else if (entry.versions.some((v) => v.source === 'personalized')) already++;
       else todo.push(it);
     }
@@ -84,13 +95,14 @@ export const batch = {
     }
 
     const done = personalized + fellBack;
-    const parts = [`${personalized} personalized`];
-    if (fellBack) parts.push(`${fellBack} fell back to the template`);
+    const parts = [mode === 'old' ? `${personalized} rewritten with the new wording` : `${personalized} personalized`];
+    if (fellBack) parts.push(`${fellBack} fell back to ${mode === 'old' ? 'their old wording' : 'the template'}`);
     if (already) parts.push(`${already} already had one`);
+    if (oldLeft) parts.push(`${oldLeft} have old wording (use Regenerate old wording)`);
     if (skippedEdited) parts.push(`${skippedEdited} skipped because you edited them`);
     const rest = todo.length - done;
     let summary = `${parts.join(', ')}.`;
-    if (stopped) summary = `Stopped: ${stopped} ${summary}${rest > 0 ? ` The other ${rest} stay as templates.` : ''}`;
+    if (stopped) summary = `Stopped: ${stopped} ${summary}${rest > 0 ? ` The other ${rest} stay as ${mode === 'old' ? 'they are' : 'templates'}.` : ''}`;
     set({ running: false, done, current: '', waitMs: 0, summary });
   },
 };
