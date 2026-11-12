@@ -96,8 +96,8 @@ export function resolveProgress(raw, { now = new Date(), defaultAccount = '' } =
     else if (dayIn > ymd(now)) errors.push(`lastSentAt ${dayIn} is in the future`);
     else day = dayIn;
   }
-  if (account && account !== 'A' && account !== 'B') {
-    errors.push(`account “${cellText(raw.account)}” must be A or B`);
+  if (account && !['A', 'B', 'C'].includes(account)) {
+    errors.push(`account “${cellText(raw.account)}” must be A, B or C`);
     account = '';
   }
   if (!account && defaultAccount) {
@@ -122,7 +122,7 @@ export function resolveProgress(raw, { now = new Date(), defaultAccount = '' } =
       if (effStep === 0 && day) errors.push('lastSentAt is set but step is 0 (no message sent yet)');
       if (effStatus === 'active' && effStep > 0 && effStep < 4 && !day) errors.push('active needs lastSentAt (YYYY-MM-DD) to work out the next due date');
     }
-    if (effStep > 0 && !account) errors.push('account (A or B) is required for a lead that was already messaged, so follow-ups come from the same account');
+    if (effStep > 0 && !account) errors.push('account (A, B or C) is required for a lead that was already messaged, so follow-ups come from the same account');
   }
 
   if (errors.length) return { errors, notes, progress: null };

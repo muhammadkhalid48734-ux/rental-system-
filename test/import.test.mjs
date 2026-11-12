@@ -105,7 +105,7 @@ test('dates must be real, YYYY-MM-DD and not in the future', () => {
 
 test('status and account must be valid', () => {
   assert.ok(errs(raw('sent', '1', day(1), 'A')).some((m) => /status “sent” must be one of/.test(m)));
-  assert.ok(errs(raw('active', '1', day(1), 'C')).some((m) => /account “C” must be A or B/.test(m)));
+  assert.ok(errs(raw('active', '1', day(1), 'D')).some((m) => /account “D” must be A, B or C/.test(m)));
 });
 
 test('rows that would confuse the Today screen are rejected with a clear reason', () => {
@@ -117,8 +117,8 @@ test('rows that would confuse the Today screen are rejected with a clear reason'
   has(raw('active', '2', '', 'A'), /active needs lastSentAt/);
   has(raw('done', '0', '', 'A'), /done needs step 1-4/);
   has(raw('replied', '0', day(2), 'A'), /lastSentAt is set but step is 0/);
-  has(raw('active', '2', day(2), ''), /account \(A or B\) is required/);
-  has(raw('won', '3', day(9), ''), /account \(A or B\) is required/);
+  has(raw('active', '2', day(2), ''), /account \(A, B or C\) is required/);
+  has(raw('won', '3', day(9), ''), /account \(A, B or C\) is required/);
   // each problem is reported, not just the first
   assert.ok(errs(raw('active', '9', '2026-02-30', 'Z')).length >= 3);
 });

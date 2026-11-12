@@ -107,30 +107,31 @@ test('follow-up gaps come from config and overdue sorts first', () => {
   assert.ok(t.followups[0].due.overdueDays > 0);
 });
 
-test('daily cap, priority order, A/B default split, undo frees a slot', () => {
-  const queued = Array.from({ length: 25 }, (_, i) => lead({
-    id: `q${i}`, order: i + 1, problem: i === 24 ? 'down' : i % 2 ? 'outdated' : 'nosite',
+test('daily cap, priority order, A/B/C default split, undo frees a slot', () => {
+  const queued = Array.from({ length: 35 }, (_, i) => lead({
+    id: `q${i}`, order: i + 1, problem: i === 34 ? 'down' : i % 2 ? 'outdated' : 'nosite',
   }));
   let t = buildToday(queued, [], cfg, NOW);
-  assert.equal(t.newDMs.length, 20);
-  assert.equal(t.newDMs[0].lead.id, 'q24'); // down first
+  assert.equal(t.newDMs.length, 30);
+  assert.equal(t.newDMs[0].lead.id, 'q34'); // down first
   assert.equal(t.newDMs.filter((x) => x.account === 'A').length, 10);
   assert.equal(t.newDMs.filter((x) => x.account === 'B').length, 10);
+  assert.equal(t.newDMs.filter((x) => x.account === 'C').length, 10);
 
   const stamp = (h) => new Date(2026, 9, 23, h).toISOString();
   const row = (leadId, account, h, channel = 'ig', step = 0) => ({ timestamp: stamp(h), leadId, account, track: 'cold', step, channel });
   const log = [row('z1', 'A', 8), row('z2', 'A', 9), row('z3', 'B', 9), row('z4', 'A', 10, 'ig', 1)];
   t = buildToday(queued, log, cfg, NOW);
-  assert.deepEqual([t.meters.A.used, t.meters.B.used], [2, 1]);
+  assert.deepEqual([t.meters.A.used, t.meters.B.used, t.meters.C.used], [2, 1, 0]);
   assert.equal(t.meters.followups.sent, 1);
-  assert.equal(t.newDMs.length, 17);
+  assert.equal(t.newDMs.length, 27);
   assert.equal(t.newDMs.filter((x) => x.account === 'A').length, 8);
 
   const undone = [...log, row('z2', 'A', 11, 'undo')];
   assert.equal(netSends(undone).length, 3);
   t = buildToday(queued, undone, cfg, NOW);
   assert.equal(t.meters.A.used, 1);
-  assert.equal(t.newDMs.length, 18);
+  assert.equal(t.newDMs.length, 28);
 });
 
 test('yesterday sends do not count against today', () => {

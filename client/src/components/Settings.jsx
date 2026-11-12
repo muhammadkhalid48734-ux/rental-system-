@@ -5,10 +5,11 @@ import { I, Icon } from './icons.jsx';
 const GROUPS = [
   {
     title: 'Accounts and daily limit',
-    note: 'Names are just labels for your two sending accounts.',
+    note: 'Names are just labels for your sending accounts.',
     fields: [
       ['accA', 'Account A name', 'text', 'e.g. @studio_one'],
       ['accB', 'Account B name', 'text', 'e.g. @studio_two'],
+      ['accC', 'Account C name', 'text', 'e.g. @studio_three'],
       ['cap', 'New DMs per account per day', 'number', ''],
       ['gaps', 'Follow-up gaps in days (after message 1, 2, 3)', 'text', '2,3,4'],
     ],

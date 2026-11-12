@@ -59,12 +59,13 @@ function QueueRow({ lead, account, cfg, selected, onSelect }) {
   const stage = getStage(lead);
   const due = dueBadge(lead, cfg);
   const acct = lead.account || account || '';
+  const acctCls = acct === 'B' ? 'acct-B' : acct === 'C' ? 'acct-C' : '';
   return (
     <li>
       <button className="queue-row" aria-current={selected ? 'true' : undefined} data-lead-id={lead.id} onClick={() => onSelect(lead.id)}>
         <span className="qr-line">
           <span className="qr-name">{lead.name}</span>
-          {acct && <span className={`acct ${acct === 'B' ? 'acct-B' : ''}`} title={`Account ${acct}`}><span aria-hidden="true">{acct}</span><span className="sr-only">Account {acct}</span></span>}
+          {acct && <span className={`acct ${acctCls}`} title={`Account ${acct}`}><span aria-hidden="true">{acct}</span><span className="sr-only">Account {acct}</span></span>}
         </span>
         <span className="qr-meta">
           <span className={`tag tag-${lead.problem}`}>{PROBLEMS[lead.problem] || lead.problem}</span>
@@ -137,7 +138,7 @@ function EmptyState({ kind, env, onAdd, onImport, goTab }) {
 export default function Today({ today, env, leadCount, selectedId, onSelect, onBack, isWide, onAdd, onImport, goTab }) {
   const { cfg } = env;
   const { replies, followups, newDMs, sentToday, remaining, queuedTotal } = today;
-  const limitHit = remaining.A + remaining.B === 0;
+  const limitHit = remaining.A + remaining.B + remaining.C === 0;
   const later = queuedTotal - newDMs.length;
 
   const everyone = [
@@ -215,7 +216,7 @@ export default function Today({ today, env, leadCount, selectedId, onSelect, onB
                     <div className="name">{r.lead?.name || 'Deleted lead'}</div>
                     <div className="sub">{label} · {CHANNEL[r.channel] || r.channel}</div>
                   </div>
-                  <span className={`acct ${r.account === 'B' ? 'acct-B' : ''}`}><span aria-hidden="true">{r.account}</span><span className="sr-only">Account {r.account}</span></span>
+                  <span className={`acct ${r.account === 'B' ? 'acct-B' : r.account === 'C' ? 'acct-C' : ''}`}><span aria-hidden="true">{r.account}</span><span className="sr-only">Account {r.account}</span></span>
                   <span className="time num">{fmtTime(new Date(r.timestamp))}</span>
                 </li>
               );

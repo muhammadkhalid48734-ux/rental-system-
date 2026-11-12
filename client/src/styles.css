@@ -39,12 +39,15 @@
   --navy-track: #5c709e;
   --hdr-a: #a5b4fc;
   --hdr-b: #fdba74;
+  --hdr-c: #c084fc;
 
   /* accounts */
   --acct-a: #4338ca;
   --acct-a-soft: #e8e7ff;
   --acct-b: #c2410c;
   --acct-b-soft: #ffede0;
+  --acct-c: #7e22ce;
+  --acct-c-soft: #f3e8ff;
   --on-acct: #ffffff;
 
   /* semantic */
@@ -269,12 +272,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 .tag-info { background: var(--primary-soft); color: var(--primary-ink); border-color: var(--primary-ink); }
 .tag-A { background: var(--acct-a-soft); color: var(--acct-a); border-color: var(--acct-a); }
 .tag-B { background: var(--acct-b-soft); color: var(--acct-b); border-color: var(--acct-b); }
+.tag-C { background: var(--acct-c-soft); color: var(--acct-c); border-color: var(--acct-c); }
 
 .acct {
   display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
   font: 700 13px/1 var(--font-display); background: var(--acct-a); color: var(--on-acct); flex-shrink: 0;
 }
 .acct-B { background: var(--acct-b); }
+.acct-C { background: var(--acct-c); }
 
 /* ---------------------------------------------------------------- app header */
 .app-header {
@@ -310,6 +315,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px
 }
 .acct-pill .acct { width: 24px; height: 24px; background: var(--hdr-a); color: #0b1b3a; }
 .acct-pill.b .acct { background: var(--hdr-b); }
+.acct-pill.c .acct { background: var(--hdr-c); }
 .acct-pill .num { font-size: 15px; }
 .acct-pill .full { color: var(--navy-muted); font-weight: 500; font-size: 13px; }
 .tabs { grid-area: tabs; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-1); padding: var(--s-1); border-radius: var(--r-lg); background: rgba(255, 255, 255, 0.08); }

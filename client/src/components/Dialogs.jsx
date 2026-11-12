@@ -111,6 +111,7 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
               <option value="">Automatic (whichever has room)</option>
               <option value="A">Account A</option>
               <option value="B">Account B</option>
+              <option value="C">Account C</option>
             </select>
           </label>
           {editing && (
@@ -230,7 +231,7 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
           Paste rows copied from your sheet (tab-separated). Columns in order:
           {' '}<b>business, website, Instagram, Facebook, note, email</b>, then optionally, for leads you already messaged:
           {' '}<b>status</b> (queued, active, replied, won, lost, done), <b>step</b> (0-4 messages already sent),
-          {' '}<b>lastSentAt</b> (YYYY-MM-DD) and <b>account</b> (A or B). A header row is ignored.
+          {' '}<b>lastSentAt</b> (YYYY-MM-DD) and <b>account</b> (A, B or C). A header row is ignored.
           Duplicate names are skipped, tracking parameters are removed, and the problem is guessed.
         </p>
         <textarea
@@ -251,6 +252,7 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
               <option value="">None (show an error)</option>
               <option value="A">A · {cfg.accA}</option>
               <option value="B">B · {cfg.accB}</option>
+              <option value="C">C · {cfg.accC}</option>
             </select>
           </label>
         )}
@@ -301,7 +303,8 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
                               <option value="">(none)</option>
                               <option value="A">A</option>
                               <option value="B">B</option>
-                              {it.raw.account.trim() && !['A', 'B'].includes(it.raw.account.trim().toUpperCase()) && (
+                              <option value="C">C</option>
+                              {it.raw.account.trim() && !['A', 'B', 'C'].includes(it.raw.account.trim().toUpperCase()) && (
                                 <option value={cellText(it.raw.account).toUpperCase()}>{it.raw.account.trim()} (invalid)</option>
                               )}
                             </select>

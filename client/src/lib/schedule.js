@@ -47,7 +47,7 @@ const isNewSend = (r) => r.track === 'cold' && r.step === 0;
 
 export function sentCounts(log, now = new Date()) {
   const today = netSends(log).filter((r) => isSameDay(new Date(r.timestamp), now));
-  const newBy = { A: 0, B: 0 };
+  const newBy = { A: 0, B: 0, C: 0 };
   for (const r of today) if (isNewSend(r) && r.account in newBy) newBy[r.account]++;
   return { today, newBy, followupsSent: today.filter((r) => !isNewSend(r)).length };
 }
@@ -66,20 +66,22 @@ export function buildToday(leads, log, cfg, now = new Date()) {
     .filter((x) => x.due?.isDue)
     .sort((a, b) => a.due.due - b.due.due);
 
-  const remaining = { A: Math.max(0, cap - newBy.A), B: Math.max(0, cap - newBy.B) };
+  const remaining = { A: Math.max(0, cap - newBy.A), B: Math.max(0, cap - newBy.B), C: Math.max(0, cap - newBy.C) };
   const queued = leads
     .filter((l) => l.status === 'queued')
     .sort((a, b) => (PROBLEM_PRIORITY[a.problem] ?? 9) - (PROBLEM_PRIORITY[b.problem] ?? 9) || a.order - b.order);
-  const picked = queued.slice(0, remaining.A + remaining.B);
+  const picked = queued.slice(0, remaining.A + remaining.B + remaining.C);
 
-  // Default A/B split: explicit picks stay, the rest fill A's open slots first, then B's.
+  // Default A/B/C split: explicit picks stay, the rest fill A's open slots first, then B's, then C's.
   let freeA = remaining.A - picked.filter((l) => l.account === 'A').length;
   let freeB = remaining.B - picked.filter((l) => l.account === 'B').length;
+  let freeC = remaining.C - picked.filter((l) => l.account === 'C').length;
   const newDMs = picked.map((lead) => {
-    if (lead.account === 'A' || lead.account === 'B') return { lead, account: lead.account, explicit: true };
+    if (['A', 'B', 'C'].includes(lead.account)) return { lead, account: lead.account, explicit: true };
     if (freeA > 0) { freeA--; return { lead, account: 'A', explicit: false }; }
-    freeB--;
-    return { lead, account: 'B', explicit: false };
+    if (freeB > 0) { freeB--; return { lead, account: 'B', explicit: false }; }
+    freeC--;
+    return { lead, account: 'C', explicit: false };
   });
 
   const byId = new Map(leads.map((l) => [l.id, l]));
@@ -115,6 +117,7 @@ export function buildToday(leads, log, cfg, now = new Date()) {
     meters: {
       A: { used: newBy.A, cap },
       B: { used: newBy.B, cap },
+      C: { used: newBy.C, cap },
       followups: { sent: followupsSent, total: followupsSent + followups.length },
     },
   };

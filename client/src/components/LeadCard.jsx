@@ -247,7 +247,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   const blocked = blockedByCheck
     ? 'Tick the confirm box first.'
     : atLimit
-      ? `Account ${account} has reached its daily limit of ${cfg.cap} new DMs. Switch to the other account.`
+      ? `Account ${account} has reached its daily limit of ${cfg.cap} new DMs. Switch to another account.`
       : awaitingAI
         ? 'Waiting for the personalized message.'
         : '';
@@ -332,7 +332,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   const primary = !showMessage ? null : copied ? 'mark' : lead.ig ? 'ig' : lead.fb ? 'fb' : 'copy';
   const cls = (key) => `btn ${primary === key && !awaitingAI ? 'btn-primary' : 'btn-secondary'}`;
 
-  const accName = account === 'A' ? cfg.accA : cfg.accB;
+  const accName = account === 'A' ? cfg.accA : account === 'B' ? cfg.accB : cfg.accC;
   const sub = [lead.city, lead.owner].filter(Boolean).join(' · ');
   const stepsSent = lead.step;
 
@@ -408,15 +408,15 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
           <span className="label" id={`acct-${lead.id}`}>Send from account</span>
           {isNew ? (
             <div className="seg" role="group" aria-labelledby={`acct-${lead.id}`}>
-              {['A', 'B'].map((a) => (
+              {['A', 'B', 'C'].map((a) => (
                 <button
                   key={a}
                   aria-pressed={account === a}
                   disabled={busy}
                   onClick={() => account !== a && actions.patch(lead.id, { account: a })}
                 >
-                  <span className={`acct ${a === 'B' ? 'acct-B' : ''}`} aria-hidden="true">{a}</span>
-                  <span className="sr-only">Account </span>{(a === 'A' ? cfg.accA : cfg.accB) || a}
+                  <span className={`acct ${a === 'B' ? 'acct-B' : a === 'C' ? 'acct-C' : ''}`} aria-hidden="true">{a}</span>
+                  <span className="sr-only">Account </span>{(a === 'A' ? cfg.accA : a === 'B' ? cfg.accB : cfg.accC) || a}
                   <span className="num" style={{ fontWeight: 500 }}>{newBy[a]}/{cfg.cap}</span>
                 </button>
               ))}

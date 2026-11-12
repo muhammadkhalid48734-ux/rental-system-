@@ -31,7 +31,7 @@ const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, obj[k]]));
 
 export default function App() {
   const [tab, setTabState] = useState(() => store.get('tab', 'today'));
-  const [theme, setTheme] = useState(() => store.get('theme', 'auto'));
+  const [theme, setTheme] = useState(() => store.get('theme', 'light'));
   const [data, setData] = useState({ leads: [], config: null, log: [], loadedAt: new Date() });
   const [phase, setPhase] = useState('checking');
   const [session, setSession] = useState({ authRequired: false, llm: { configured: false, model: '' } });
@@ -283,7 +283,7 @@ export default function App() {
   const env = {
     cfg,
     busy,
-    newBy: { A: today.meters.A.used, B: today.meters.B.used },
+    newBy: { A: today.meters.A.used, B: today.meters.B.used, C: today.meters.C.used },
     llm: session.llm,
     actions,
   };

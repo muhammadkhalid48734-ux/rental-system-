@@ -13,8 +13,9 @@ const THEME = { auto: ['Auto', I.CircleHalf], light: ['Light', I.Sun], dark: ['D
 
 function AcctPill({ letter, name, used, cap }) {
   const full = used >= cap;
+  const cls = letter === 'B' ? 'b' : letter === 'C' ? 'c' : '';
   return (
-    <div className={`acct-pill ${letter === 'B' ? 'b' : ''}`} title={`Account ${letter} new DMs today (${name || `Account ${letter}`})`}>
+    <div className={`acct-pill ${cls}`} title={`Account ${letter} new DMs today (${name || `Account ${letter}`})`}>
       <span className="acct" aria-hidden="true">{letter}</span>
       <span className="sr-only">Account {letter} new DMs today: </span>
       <span className="num">{used}/{cap}</span>
@@ -108,6 +109,7 @@ export default function Header({ now, tasks, meters, cfg, tab, setTab, theme, cy
           <div className="accts" role="group" aria-label="New DMs sent today per account">
             <AcctPill letter="A" name={cfg.accA} used={meters.A.used} cap={meters.A.cap} />
             <AcctPill letter="B" name={cfg.accB} used={meters.B.used} cap={meters.B.cap} />
+            {meters.C && <AcctPill letter="C" name={cfg.accC} used={meters.C.used} cap={meters.C.cap} />}
           </div>
         </div>
 

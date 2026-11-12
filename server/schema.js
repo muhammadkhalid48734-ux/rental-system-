@@ -12,6 +12,7 @@ export const MESSAGE_COLS = ['timestamp', 'leadId', 'kind', 'text'];
 export const CONFIG_DEFAULTS = {
   accA: 'Account A',
   accB: 'Account B',
+  accC: 'Account C',
   cap: '10',
   gaps: '2,3,4',
   yourName: '',
@@ -41,7 +42,7 @@ export const ENUMS = {
   problem: ['outdated', 'down', 'parked', 'nosite', 'social'],
   status: ['queued', 'active', 'replied', 'won', 'lost', 'done'],
   track: ['cold', 'demo'],
-  account: ['', 'A', 'B'],
+  account: ['', 'A', 'B', 'C'],
   // 'reply' is the photo-permission message; 'undo' (channel) cancels an earlier row.
   logTrack: ['cold', 'demo', 'reply'],
   channel: ['ig', 'fb', 'email', 'undo'],
@@ -185,7 +186,7 @@ export function cleanLogEntry(input) {
   return {
     timestamp: new Date().toISOString(),
     leadId,
-    account: pickEnum(['A', 'B'], input.account, 'account'),
+    account: pickEnum(['A', 'B', 'C'], input.account, 'account'),
     track: pickEnum(ENUMS.logTrack, input.track, 'track'),
     step,
     channel: pickEnum(ENUMS.channel, input.channel, 'channel'),
