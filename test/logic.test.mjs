@@ -391,7 +391,7 @@ test('header tasks = new DMs + follow-ups: done today vs still to do (replies ar
     at(8, 'x1', 'cold', 0),            // new DM            -> task
     at(9, 'x2', 'cold', 1),            // follow-up         -> task
     at(10, 'x3', 'demo', 1),           // demo nudge        -> task
-    at(11, 'x4', 'reply', 0),          // photo-permission  -> not a task
+    at(11, 'x4', 'reply', 0),          // yes-reply         -> not a task
     at(12, 'x5', 'demo', 0),           // demo delivery     -> not a task
     { ...at(13, 'x6', 'cold', 0, 'imported'), timestamp: NOW.toISOString() }, // imported history -> never counted
   ];

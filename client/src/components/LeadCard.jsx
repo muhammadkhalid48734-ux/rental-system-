@@ -451,7 +451,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
       {stage?.key === 'replyWait' && (
         <div className="notice" role="note">
           <Icon as={I.Info} />
-          <div>Photo-permission message sent. Once they agree, build the private demo and paste its link above to get the delivery message.</div>
+          <div>Yes-reply sent. Once they send their top 3 rentals, build the demo and paste its link above to get the delivery message.</div>
         </div>
       )}
 

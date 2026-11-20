@@ -242,7 +242,7 @@ const STEP_LABELS = {
   fu1: 'Follow-up 1 of 3',
   fu2: 'Follow-up 2 of 3',
   fu3: 'Follow-up 3 of 3 · last',
-  reply: 'Replied · photo permission',
+  reply: 'Replied · top 3 and price',
   replyWait: 'Replied · build the demo',
   demo: 'Demo delivery',
   nudge1: 'Demo nudge 1 of 3',

@@ -49,7 +49,7 @@ export const ENUMS = {
   account: ['', 'A', 'B', 'C'],
   // Where the lead was found. Empty = not recorded yet (the card shows a warning).
   source: ['', 'groups', 'ads', 'marketplace', 'maps', 'instagram', 'other'],
-  // 'reply' is the photo-permission message; 'undo' (channel) cancels an earlier row.
+  // 'reply' is the yes-reply (top 3 + price line); 'undo' (channel) cancels an earlier row.
   logTrack: ['cold', 'demo', 'reply'],
   channel: ['ig', 'fb', 'email', 'undo'],
 };
