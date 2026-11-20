@@ -235,3 +235,7 @@ test('the demo video link can be entered on the card and in the edit dialog', ()
   assert.match(read('client/src/components/LeadCard.jsx'), /Demo video \(optional/);
   assert.match(read('client/src/components/Dialogs.jsx'), /'demoVideo'/);
 });
+
+test('Settings has the plans page link used by the "Go live" quick reply', () => {
+  assert.match(read('client/src/components/Settings.jsx'), /\['siteUrl', 'Plans page link/);
+});

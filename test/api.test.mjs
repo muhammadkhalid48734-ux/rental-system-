@@ -234,6 +234,22 @@ test('config: plans validate, founding offer flag, old package and delivery-time
   } finally { await close(); }
 });
 
+test('config: siteUrl defaults to empty, is saved as a link, and a Config tab without it still works', async () => {
+  const { store, call, close } = await setup({ env: {} });
+  try {
+    assert.equal((await call('GET', '/api/config')).json.config.siteUrl, '');
+    let r = await call('PUT', '/api/config', { siteUrl: 'hopbook.example/plans' });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.config.siteUrl, 'https://hopbook.example/plans');
+    r = await call('PUT', '/api/config', { siteUrl: '' });
+    assert.equal(r.json.config.siteUrl, '');
+    assert.equal((await call('PUT', '/api/config', { siteUrl: 'javascript:alert(1)' })).status, 400);
+    // an existing sheet whose Config tab predates siteUrl
+    await store.replaceAll('Config', (await store.getRows('Config')).filter(([k]) => k !== 'siteUrl'));
+    assert.equal((await call('GET', '/api/config')).json.config.siteUrl, '');
+  } finally { await close(); }
+});
+
 test('leads: the hook is limited to 12 words (an unchanged older hook still saves)', async () => {
   const { call, store, close } = await setup({ env: {} });
   try {

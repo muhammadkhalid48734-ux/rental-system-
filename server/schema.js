@@ -20,6 +20,8 @@ export const CONFIG_DEFAULTS = {
   yourName: '',
   studio: '',
   address: '',
+  // Link to the plans page (Hopbook). Shown in the "Go live" quick reply; empty = left out.
+  siteUrl: '',
   // Monthly plans (the website build is free). Prices are plain numbers (USD per month).
   // `founding` is the first-year price, shown only while foundingOffer is on.
   plan1Name: 'Get Found',
@@ -155,6 +157,7 @@ export function cleanConfig(input) {
     if (!ok) throw new HttpError(400, 'gaps must be three day counts like "2,3,4"');
     out.gaps = parts.join(',');
   }
+  if ('siteUrl' in out && out.siteUrl) out.siteUrl = cleanUrl(out.siteUrl, 'siteUrl');
   if ('foundingOffer' in out) {
     const v = out.foundingOffer.toLowerCase();
     if (!['true', 'false', ''].includes(v)) throw new HttpError(400, 'foundingOffer must be true or false');
