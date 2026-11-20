@@ -252,3 +252,15 @@ test('city is required when adding a lead; source is editable in the dialog and 
     assert.match(read(rel), /missingTracking\(lead\)\.length > 0/, rel);
   }
 });
+
+test('Stats tab: in the header, routed in App, simple tables (no charts)', () => {
+  assert.match(read('client/src/components/Header.jsx'), /\['stats', 'Stats', I\.ChartBar\]/);
+  const app = read('client/src/App.jsx');
+  assert.match(app, /'stats'/);
+  assert.match(app, /<Stats leads=\{data\.leads\} \/>/);
+  const stats = read('client/src/components/Stats.jsx');
+  assert.match(stats, /<table className="stats-table">/);
+  assert.match(stats, /By city/);
+  assert.match(stats, /By source/);
+  assert.match(css, /\.tabs \{[^}]*repeat\(5,/);
+});

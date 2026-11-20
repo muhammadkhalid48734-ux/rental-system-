@@ -6,6 +6,7 @@ const TABS = [
   ['today', 'Today', I.ListChecks],
   ['leads', 'Leads', I.Users],
   ['replies', 'Quick replies', I.ChatCircleText],
+  ['stats', 'Stats', I.ChartBar],
   ['settings', 'Settings', I.Gear],
 ];
 

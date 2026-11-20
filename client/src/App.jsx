@@ -10,6 +10,7 @@ import Today from './components/Today.jsx';
 import LeadsTab from './components/LeadsTab.jsx';
 import QuickReplies from './components/QuickReplies.jsx';
 import Settings from './components/Settings.jsx';
+import Stats from './components/Stats.jsx';
 import Toasts from './components/Toast.jsx';
 import Login from './components/Login.jsx';
 import { I, Icon } from './components/icons.jsx';
@@ -48,7 +49,7 @@ export default function App() {
   const toastId = useRef(0);
 
   // ---- routing: #/today, #/today/<leadId>, #/leads ... so every screen has a URL and Back behaves
-  const TABS = ['today', 'leads', 'replies', 'settings'];
+  const TABS = ['today', 'leads', 'replies', 'stats', 'settings'];
   const writeHash = (t, id, { push = false } = {}) => {
     const url = `#/${t}${id ? `/${id}` : ''}`;
     if (window.location.hash === url) return;
@@ -382,6 +383,7 @@ export default function App() {
               />
             )}
             {tab === 'replies' && <QuickReplies cfg={cfg} toast={toast} />}
+            {tab === 'stats' && <Stats leads={data.leads} />}
             {tab === 'settings' && <Settings key={JSON.stringify(data.config)} config={data.config} leads={data.leads} onSave={saveConfig} toast={toast} session={session} onLogout={logout} />}
           </div>
         )}

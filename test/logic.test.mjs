@@ -475,3 +475,26 @@ test('"What\'s the catch?" and "Go live": exact wording, Config prices, siteUrl 
     }
   }
 });
+
+test('Stats: per city and per source counts for sent, replied, demo, won, lost', async () => {
+  const { trackingStats, NO_CITY, NO_SOURCE } = await import('../client/src/lib/schedule.js');
+  const leads = [
+    lead({ id: '1', city: 'Mesa', source: 'maps', status: 'queued', step: 0 }),
+    lead({ id: '2', city: 'mesa', source: 'maps', status: 'active', step: 2 }),
+    lead({ id: '3', city: 'Mesa', source: 'groups', status: 'replied', step: 1, repliedAt: daysAgo(1) }),
+    lead({ id: '4', city: 'Tempe', source: 'groups', status: 'active', track: 'demo', step: 1, repliedAt: daysAgo(3) }),
+    lead({ id: '5', city: 'Tempe', source: '', status: 'won', track: 'demo', step: 2, repliedAt: daysAgo(9) }),
+    lead({ id: '6', city: '', source: 'ads', status: 'lost', step: 1 }),
+    lead({ id: '7', city: '', source: 'ads', status: 'done', step: 4 }),
+  ];
+  const { byCity, bySource } = trackingStats(leads);
+  const row = (rows, name) => rows.find((r) => r.name === name);
+  assert.deepEqual(row(byCity, 'Mesa'), { name: 'Mesa', leads: 3, sent: 2, replied: 1, demo: 0, won: 0, lost: 0 }, 'cities group case-insensitively');
+  assert.deepEqual(row(byCity, 'Tempe'), { name: 'Tempe', leads: 2, sent: 2, replied: 2, demo: 2, won: 1, lost: 0 });
+  assert.deepEqual(row(byCity, NO_CITY), { name: NO_CITY, leads: 2, sent: 2, replied: 0, demo: 0, won: 0, lost: 1 });
+  assert.deepEqual(row(bySource, 'maps'), { name: 'maps', leads: 2, sent: 1, replied: 0, demo: 0, won: 0, lost: 0 });
+  assert.deepEqual(row(bySource, 'groups'), { name: 'groups', leads: 2, sent: 2, replied: 2, demo: 1, won: 0, lost: 0 });
+  assert.deepEqual(row(bySource, NO_SOURCE), { name: NO_SOURCE, leads: 1, sent: 1, replied: 1, demo: 1, won: 1, lost: 0 });
+  assert.equal(byCity.length, 3);
+  assert.deepEqual(trackingStats([]), { byCity: [], bySource: [] });
+});

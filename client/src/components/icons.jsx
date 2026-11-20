@@ -4,7 +4,7 @@ import {
   ArrowDown, ArrowUp, ArrowLeft, ArrowSquareOut, ArrowsClockwise, CaretDown, CaretLeft, CaretRight, Check, CheckCircle, ChatCircleText,
   CircleHalf, CopySimple, DotsThree, EnvelopeSimple, FacebookLogo, Gear, InstagramLogo, Keyboard, ListChecks,
   LockKey, MagnifyingGlass, Moon, PencilSimple, Plus, Sparkle, Sun, SignOut, Tray, UploadSimple, Users, Warning,
-  WarningCircle, X, XCircle, Info, Trash, ClockCountdown, Eye, EyeSlash,
+  WarningCircle, X, XCircle, Info, Trash, ClockCountdown, Eye, EyeSlash, ChartBar,
 } from '@phosphor-icons/react';
 
 export const ICON_SIZE = { sm: 16, md: 20, lg: 24, xl: 28 };
@@ -17,5 +17,5 @@ export const I = {
   ArrowDown, ArrowUp, ArrowLeft, ArrowSquareOut, ArrowsClockwise, CaretDown, CaretLeft, CaretRight, Check, CheckCircle, ChatCircleText,
   CircleHalf, CopySimple, DotsThree, EnvelopeSimple, FacebookLogo, Gear, InstagramLogo, Keyboard, ListChecks,
   LockKey, MagnifyingGlass, Moon, PencilSimple, Plus, Sparkle, Sun, SignOut, Tray, UploadSimple, Users, Warning,
-  WarningCircle, X, XCircle, Info, Trash, ClockCountdown, Eye, EyeSlash,
+  WarningCircle, X, XCircle, Info, Trash, ClockCountdown, Eye, EyeSlash, ChartBar,
 };
