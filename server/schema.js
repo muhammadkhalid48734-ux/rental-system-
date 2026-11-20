@@ -4,6 +4,8 @@ import { HOOK_MAX_WORDS, hookWordCount } from '../client/src/lib/messages.js';
 export const LEAD_COLS = [
   'id', 'name', 'city', 'owner', 'fb', 'ig', 'email', 'site', 'problem', 'hook', 'note',
   'status', 'track', 'step', 'account', 'lastSentAt', 'repliedAt', 'demoLink', 'verified', 'order',
+  // Added later. New columns always go at the end, so a Sheet created before them keeps working (missing = empty).
+  'demoVideo',
 ];
 export const LOG_COLS = ['timestamp', 'leadId', 'account', 'track', 'step', 'channel'];
 // Exact text of every message the user marked as sent (undo adds a "<kind>:undo" row).
@@ -49,7 +51,7 @@ export const ENUMS = {
 };
 
 const TEXT_FIELDS = ['name', 'city', 'owner', 'email', 'hook', 'note'];
-const URL_FIELDS = ['fb', 'ig', 'site', 'demoLink'];
+const URL_FIELDS = ['fb', 'ig', 'site', 'demoLink', 'demoVideo'];
 const DATE_FIELDS = ['lastSentAt', 'repliedAt'];
 
 const str = (v, max = 2000) => String(v ?? '').replace(/\s+$/g, '').replace(/^\s+/g, '').slice(0, max);
@@ -71,7 +73,7 @@ function cleanUrl(v, field) {
 export const blankLead = () => ({
   id: '', name: '', city: '', owner: '', fb: '', ig: '', email: '', site: '', problem: '', hook: '', note: '',
   status: 'queued', track: 'cold', step: 0, account: '', lastSentAt: '', repliedAt: '', demoLink: '',
-  verified: false, order: 0,
+  verified: false, order: 0, demoVideo: '',
 });
 
 export function rowToLead(row) {

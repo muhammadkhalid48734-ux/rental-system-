@@ -18,7 +18,7 @@ const SECRET = 's'.repeat(48);
 const PROD = { NODE_ENV: 'production', APP_PASSWORD: PASSWORD, SESSION_SECRET: SECRET, GROQ_API_KEY: 'gsk_test' };
 
 const GOOD =
-  "Hey Dana! I came across Hop & Pop Party Rentals and noticed your sparkle-theme castle. When I pulled up your site on my phone, the layout was tiny and hard to tap, so a few parents may give up before asking about dates. I run a small web design studio and I'd be glad to build you a free demo of a modern site with a gallery and a booking request form. No obligation. Want me to put one together?";
+  "Hey Dana! I came across Hop & Pop Party Rentals and noticed your sparkle-theme castle. When I pulled up your site on my phone, the layout was tiny and hard to tap, so a few parents may give up before asking about dates. I run a small web design studio and could build you a free demo of a simple site where parents can see your rentals and send a booking request. Nothing gets booked without you, you approve every request. No obligation. Want me to put one together?";
 
 async function serve(handler) {
   const server = http.createServer(handler);
@@ -318,7 +318,7 @@ test('generate: a violation triggers one retry that states it; success on retry 
     const r = await gen(t);
     assert.equal(r.json.source, 'personalized');
     assert.equal(llm.calls.length, 2);
-    assert.match(llm.calls[1].user, /previous draft was rejected because: it contains a link or website address/);
+    assert.match(llm.calls[1].user, /previous draft was rejected because:.*it contains a link or website address/);
   } finally { await t.close(); }
 });
 
@@ -345,7 +345,7 @@ test('generate: a delivery-time promise, a price or "free website" is rejected a
     assert.equal(r.json.source, 'personalized');
     assert.equal(r.json.promptVersion, PROMPT_VERSION);
     assert.equal(llm.calls.length, 2);
-    assert.match(llm.calls[1].user, /previous draft was rejected because: it promises when or how fast something will arrive/);
+    assert.match(llm.calls[1].user, /previous draft was rejected because:.*it promises when or how fast something will arrive/);
     for (const c of llm.calls) {
       assert.ok(!c.system.includes('usually within the hour during our support hours'));
       assert.ok(!c.user.includes('support hours'));
@@ -364,14 +364,32 @@ test('generate: a delivery-time promise, a price or "free website" is rejected a
   } finally { await t2.close(); }
 });
 
-test('generate: the photo-permission reply always ends with "You\'ll have it shortly."', async () => {
-  const draft = 'Hi Dana! Thanks so much for getting back to me. Would it be okay if I use a few photos from your page in a private demo? Only you would see it.';
+test('generate: the yes-reply gets the Config price line server-side, before its top-3 question', async () => {
+  const draft = "Hi Dana! Thanks so much for getting back to me. I'll only use photos from your page with your OK, and nothing goes live without your approval. What are your top 3 rentals?";
   const t = await genSetup(fakeLlm(draft));
   try {
+    await t.call('PUT', '/api/config', { plan1Price: '65', plan1Founding: '45', foundingOffer: 'true' });
     const r = await gen(t, { kind: 'replyAck' });
     assert.equal(r.json.source, 'personalized');
-    assert.ok(r.json.text.endsWith("You'll have it shortly."));
+    const text = r.json.text;
+    assert.ok(text.includes('plans start at $45/month for the first year ($65/month after) (3-month minimum, then cancel anytime).'), text);
+    assert.ok(text.endsWith('What are your top 3 rentals?'));
+    assert.ok(text.indexOf('Quick heads-up') < text.indexOf('What are your top 3'));
+    assert.doesNotMatch(text, /shortly/i);
+    const amounts = [...text.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+    assert.deepEqual(amounts.sort((a, b) => a - b), [45, 65], 'only Config amounts');
   } finally { await t.close(); }
+
+  // a price written by the model is rejected before the price line is ever added
+  const priced = draft.replace('What are', 'Plans start at $20/month. What are');
+  const t2 = await genSetup(fakeLlm(priced, priced));
+  try {
+    const r = await gen(t2, { kind: 'replyAck' });
+    assert.equal(r.json.source, 'template');
+    assert.match(r.json.reason, /price/);
+    assert.doesNotMatch(r.json.text, /\$20/);
+    assert.match(r.json.text, /plans start at \$59\/month/);
+  } finally { await t2.close(); }
 });
 
 test('generate: provider errors are clear and never look like a login failure', async () => {
@@ -431,8 +449,8 @@ test('leads: PATCH and DELETE accept the id as ?id= (single path segment) as wel
   } finally { await t.close(); }
 });
 
-test('generate: demo messages get the exact link and the fixed closing sentence, and never a price or package list', async () => {
-  const draft = 'Hi Dana! Your private demo is ready at [[LINK]]. Only you have this link and nothing is public. The calendar and the form in this version are for show, so you can see the layout. Tell me what to change: colors, wording, items, prices or photos.';
+test('generate: demo messages get the exact link, the video line and the closing question, and never a price', async () => {
+  const draft = 'Hi Dana! Thanks again for the go-ahead. Your demo is ready at [[LINK]]. Only you have this link. Photos and info are samples for now.';
   const llm = fakeLlm(draft);
   const t = await genSetup(llm);
   try {
@@ -440,10 +458,17 @@ test('generate: demo messages get the exact link and the fixed closing sentence,
     const r = await gen(t, { kind: 'demo' });
     assert.equal(r.json.source, 'personalized');
     assert.ok(r.json.text.includes('https://demo.example/hoppop'));
-    assert.ok(r.json.text.endsWith("If you'd like to know how it works and what it costs, just ask."));
+    assert.ok(r.json.text.endsWith('Which rental should be first on the page?'));
+    assert.doesNotMatch(r.json.text, /video/i);
     assert.doesNotMatch(r.json.text, /\$|Recommended|setup|monthly|Get Found|Get Booked|Get Paid/i);
     assert.ok(!llm.calls[0].user.includes('demo.example'), 'link is not sent to the provider');
     assert.ok(!/Get Found|Get Booked|Get Paid|\$\d/.test(llm.calls[0].user + llm.calls[0].system.replace(/\$99\/month/, '')), 'no plans or prices in the demo prompt');
+
+    await t.call('PATCH', `/api/leads/${t.lead.id}`, { demoVideo: 'https://video.example/clip' });
+    const v = await gen(t, { kind: 'demo' });
+    assert.equal(v.json.source, 'personalized');
+    assert.ok(v.json.text.endsWith("Here's a quick video of how a customer would send you a request: https://video.example/clip\n\nWhich rental should be first on the page?"));
+    assert.ok(!llm.calls[1].user.includes('video.example'), 'video link is not sent to the provider');
   } finally { await t.close(); }
 
   const priced = `${draft} It is $99/month.`;
@@ -499,4 +524,19 @@ test('vercel.json: one catch-all function, CSP matches the server constant, noth
 test('.gitignore keeps secrets and dependencies out of git', () => {
   const ig = fs.readFileSync(new URL('../.gitignore', import.meta.url), 'utf8').split(/\r?\n/);
   for (const need of ['.env', 'node_modules/', 'credentials/', '*service-account*.json', '*-key.json']) assert.ok(ig.includes(need), need);
+});
+
+test('Sheets: new lead columns are backward-compatible (missing cells read as empty, old headers upgraded)', async () => {
+  const { headerUpgrade } = await import('../server/store.js');
+  const { LEAD_COLS, rowToLead } = await import('../server/schema.js');
+  const oldHeader = LEAD_COLS.slice(0, LEAD_COLS.indexOf('order') + 1);
+  assert.deepEqual(headerUpgrade(oldHeader, LEAD_COLS), LEAD_COLS, 'an older, shorter header gets the new names');
+  assert.equal(headerUpgrade(LEAD_COLS, LEAD_COLS), null, 'current header: nothing to write');
+  assert.deepEqual(headerUpgrade([...oldHeader, '', ''], LEAD_COLS), LEAD_COLS, 'trailing blank cells are ignored');
+  assert.equal(headerUpgrade(['id', 'Business', 'city'], LEAD_COLS), null, 'a header edited by hand is never overwritten');
+  assert.equal(headerUpgrade([], LEAD_COLS), null);
+  // a row written before the new columns existed
+  const lead = rowToLead(['id1', 'Old Co', 'Mesa', '', '', '', '', '', 'nosite', '', '', 'queued', 'cold', '0', '', '', '', '', 'FALSE', '3']);
+  for (const k of LEAD_COLS.slice(oldHeader.length)) assert.equal(lead[k], '', k);
+  assert.equal(lead.name, 'Old Co');
 });
