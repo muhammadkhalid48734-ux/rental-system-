@@ -399,3 +399,48 @@ test('"Contacted" counts imported leads (from the lead fields, which the import 
     assert.equal(stats.rate, 33);
   } finally { await close(); }
 });
+
+// ------------------------------------------------------------------ city and source (tracking)
+
+test('import: city and source as columns 11 and 12, or by header name anywhere; unknown sources become "other"', async () => {
+  const { normSource } = await import('../client/src/lib/importer.js');
+  const positional = parsePaste('Fun Jumps\t\t\t\t\t\t\t\t\t\tMesa\tGoogle Maps\textra hi@fun.example', []);
+  assert.deepEqual([positional.rows[0].city, positional.rows[0].source, positional.rows[0].email], ['Mesa', 'maps', 'hi@fun.example']);
+  assert.equal(positional.rows[0].raw, null, 'no progress columns: still a plain new lead');
+
+  const byHeader = parsePaste([
+    'business\tcity\twebsite\tinstagram\tfacebook\tnote\temail\tSource',
+    'Castle Kings\tTempe\t\t\t\t\t\tfb groups',
+  ].join('\n'), []);
+  // with a header row, the named columns are read wherever they are
+  assert.equal(byHeader.rows[0].city, 'Tempe');
+  assert.equal(byHeader.rows[0].source, 'groups');
+
+  assert.equal(parsePaste('Old Six Col\t\t\t\tnote\t', []).rows[0].city, '', 'old pastes: empty city and source');
+  assert.equal(parsePaste('Old Six Col\t\t\t\tnote\t', []).rows[0].source, '');
+  for (const [v, want] of [['Instagram', 'instagram'], ['IG', 'instagram'], ['ads', 'ads'], ['Marketplace', 'marketplace'], ['a friend', 'other'], ['', ''], ['n/a', '']]) {
+    assert.equal(normSource(v), want, v);
+  }
+});
+
+test('API: source is validated, saved, and a lead without city or source still works', async () => {
+  const { call, close } = await setup();
+  try {
+    const r = await call('POST', '/api/leads', { leads: [{ name: 'With Src', city: 'Mesa', source: 'Maps' }, { name: 'No Src' }] });
+    assert.equal(r.status, 200);
+    const [a, b] = r.json.created;
+    assert.deepEqual([a.city, a.source], ['Mesa', 'maps']);
+    assert.deepEqual([b.city, b.source], ['', '']);
+    assert.equal((await call('POST', '/api/leads', { leads: [{ name: 'Bad Src', source: 'tiktok' }] })).status, 400);
+    const p = await call('PATCH', `/api/leads?id=${b.id}`, { source: 'groups', city: 'Tempe' });
+    assert.deepEqual([p.json.lead.source, p.json.lead.city], ['groups', 'Tempe']);
+  } finally { await close(); }
+});
+
+test('missingTracking flags an empty city or source for the warning badge', async () => {
+  const { missingTracking } = await import('../client/src/lib/messages.js');
+  assert.deepEqual(missingTracking({ city: '', source: '' }), ['city', 'source']);
+  assert.deepEqual(missingTracking({ city: 'Mesa', source: '' }), ['source']);
+  assert.deepEqual(missingTracking({ city: ' ', source: 'maps' }), ['city']);
+  assert.deepEqual(missingTracking({ city: 'Mesa', source: 'maps' }), []);
+});

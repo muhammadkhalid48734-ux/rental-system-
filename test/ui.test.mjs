@@ -239,3 +239,16 @@ test('the demo video link can be entered on the card and in the edit dialog', ()
 test('Settings has the plans page link used by the "Go live" quick reply', () => {
   assert.match(read('client/src/components/Settings.jsx'), /\['siteUrl', 'Plans page link/);
 });
+
+test('city is required when adding a lead; source is editable in the dialog and on the card; warning badges', () => {
+  const dialogs = read('client/src/components/Dialogs.jsx');
+  assert.match(dialogs, /if \(!editing && !String\(f\.city \|\| ''\)\.trim\(\)\) return setErr\('City is required\.'\);/);
+  assert.match(dialogs, /Source \(where you found them\)/);
+  assert.match(dialogs, /city: row\.city, source: row\.source/);
+  const card = read('client/src/components/LeadCard.jsx');
+  assert.match(card, /Source \(where you found them\)/);
+  assert.match(card, /save\('city', city\)/);
+  for (const rel of ['client/src/components/LeadCard.jsx', 'client/src/components/LeadsTab.jsx']) {
+    assert.match(read(rel), /missingTracking\(lead\)\.length > 0/, rel);
+  }
+});

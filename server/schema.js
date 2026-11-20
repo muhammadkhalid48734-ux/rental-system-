@@ -5,7 +5,7 @@ export const LEAD_COLS = [
   'id', 'name', 'city', 'owner', 'fb', 'ig', 'email', 'site', 'problem', 'hook', 'note',
   'status', 'track', 'step', 'account', 'lastSentAt', 'repliedAt', 'demoLink', 'verified', 'order',
   // Added later. New columns always go at the end, so a Sheet created before them keeps working (missing = empty).
-  'demoVideo',
+  'demoVideo', 'source',
 ];
 export const LOG_COLS = ['timestamp', 'leadId', 'account', 'track', 'step', 'channel'];
 // Exact text of every message the user marked as sent (undo adds a "<kind>:undo" row).
@@ -47,6 +47,8 @@ export const ENUMS = {
   status: ['queued', 'active', 'replied', 'won', 'lost', 'done'],
   track: ['cold', 'demo'],
   account: ['', 'A', 'B', 'C'],
+  // Where the lead was found. Empty = not recorded yet (the card shows a warning).
+  source: ['', 'groups', 'ads', 'marketplace', 'maps', 'instagram', 'other'],
   // 'reply' is the photo-permission message; 'undo' (channel) cancels an earlier row.
   logTrack: ['cold', 'demo', 'reply'],
   channel: ['ig', 'fb', 'email', 'undo'],
@@ -75,7 +77,7 @@ function cleanUrl(v, field) {
 export const blankLead = () => ({
   id: '', name: '', city: '', owner: '', fb: '', ig: '', email: '', site: '', problem: '', hook: '', note: '',
   status: 'queued', track: 'cold', step: 0, account: '', lastSentAt: '', repliedAt: '', demoLink: '',
-  verified: false, order: 0, demoVideo: '',
+  verified: false, order: 0, demoVideo: '', source: '',
 });
 
 export function rowToLead(row) {
@@ -126,6 +128,7 @@ export function cleanLead(input, base = null) {
   if (has('status')) out.status = pickEnum(ENUMS.status, input.status, 'status');
   if (has('track')) out.track = pickEnum(ENUMS.track, input.track, 'track');
   if (has('account')) out.account = pickEnum(ENUMS.account, input.account, 'account');
+  if (has('source')) out.source = pickEnum(ENUMS.source, str(input.source).toLowerCase(), 'source');
   if (has('step')) {
     const n = Number(input.step);
     if (!Number.isInteger(n) || n < 0 || n > 4) throw new HttpError(400, 'step must be 0-4');

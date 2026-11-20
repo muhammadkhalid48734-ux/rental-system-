@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { copyText } from '../lib/clipboard.js';
 import { EMPTY, genCache } from '../lib/genCache.js';
 import { cacheKey, errorMessage, goTo, isOldWording, requestVariant, stashEdit, view } from '../lib/gen.js';
-import { buildMessage, getStage, HOOK_MAX_WORDS, hasLink, hasPlaceholder, hookWordCount, PROBLEMS, toEmailText } from '../lib/messages.js';
+import {
+  buildMessage, getStage, HOOK_MAX_WORDS, hasLink, hasPlaceholder, hookWordCount, missingTracking, PROBLEMS, SOURCES, toEmailText,
+} from '../lib/messages.js';
 import { dueBadge, HOOK_HELP, HOOK_LABEL, HOOK_PLACEHOLDER, NOTE_HELP, NOTE_LABEL } from '../lib/ui.js';
 import HookHint from './HookHint.jsx';
 import { I, Icon } from './icons.jsx';
@@ -50,12 +52,14 @@ function MoreMenu({ items }) {
   );
 }
 
-/** Problem tag, note and hook (both editable inline, saved on blur), site link, and a nudge when both are empty. */
+/** Problem tag, city, source, note and hook (editable inline, saved on blur), site link, and a nudge when note and hook are empty. */
 function AboutStrip({ lead, actions }) {
   const [hook, setHook] = useState(lead.hook || '');
   const [note, setNote] = useState(lead.note || '');
+  const [city, setCity] = useState(lead.city || '');
   useEffect(() => { setHook(lead.hook || ''); }, [lead.hook]);
   useEffect(() => { setNote(lead.note || ''); }, [lead.note]);
+  useEffect(() => { setCity(lead.city || ''); }, [lead.city]);
 
   const save = (field, value) => {
     const v = value.trim();
@@ -78,6 +82,20 @@ function AboutStrip({ lead, actions }) {
         )}
       </div>
       <div className="about-fields">
+        <label className="field">
+          <span className="label">City</span>
+          <input type="text" value={city} maxLength={100} placeholder="e.g. Mesa" onChange={(e) => setCity(e.target.value)} onBlur={() => save('city', city)} />
+        </label>
+        <label className="field">
+          <span className="label">Source (where you found them)</span>
+          <select
+            value={lead.source || ''}
+            onChange={(e) => actions.patch(lead.id, { source: e.target.value }, undefined, { quiet: true })}
+          >
+            <option value="">Not set</option>
+            {Object.entries(SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </label>
         <label className="field">
           <span className="label">{NOTE_LABEL}</span>
           <textarea
@@ -372,6 +390,11 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
           {(lead.account || isNew) && <span className={`tag tag-${account}`}>{account}{accName ? ` · ${accName}` : ''}</span>}
           {due && <span className={`tag ${due.tone === 'bad' ? 'tag-bad' : due.tone === 'warn' ? 'tag-warn' : ''}`}>{due.text}</span>}
           {needsCheck && !verified && <span className="tag tag-warn"><Icon as={I.Warning} size="sm" /> Unverified</span>}
+          {missingTracking(lead).length > 0 && (
+            <span className="tag tag-warn" title="Add the city and the source so Stats can compare them.">
+              <Icon as={I.Warning} size="sm" /> No {missingTracking(lead).join(' or ')}
+            </span>
+          )}
           {lead.status === 'replied' && <span className="tag tag-info">Replied</span>}
         </div>
       </header>

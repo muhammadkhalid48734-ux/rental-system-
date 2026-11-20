@@ -13,7 +13,21 @@ export const PROBLEMS = {
   social: 'Social only',
 };
 
-export const PROBLEM_PRIORITY = { down: 0, parked: 0, nosite: 1, social: 1, outdated: 2 };
+/** Where a lead was found (lead.source). Same values as ENUMS.source on the server, minus the empty one. */
+export const SOURCES = {
+  groups: 'Facebook groups',
+  ads: 'Ads',
+  marketplace: 'Marketplace',
+  maps: 'Google Maps',
+  instagram: 'Instagram',
+  other: 'Other',
+};
+
+/** Tracking fields still empty on a lead ('city', 'source'), for the warning badge. */
+export const missingTracking = (lead) =>
+  ['city', 'source'].filter((k) => !String(lead[k] || '').trim());
+
+export const PROBLEM_PRIORITY ={ down: 0, parked: 0, nosite: 1, social: 1, outdated: 2 };
 
 export const hasLink = (s) => /^https?:\/\/\S+$/i.test(String(s || '').trim());
 

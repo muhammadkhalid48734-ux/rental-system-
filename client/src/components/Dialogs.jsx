@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { I, Icon } from './icons.jsx';
-import { HOOK_MAX_WORDS, hookWordCount, PROBLEMS } from '../lib/messages.js';
+import { HOOK_MAX_WORDS, hookWordCount, PROBLEMS, SOURCES } from '../lib/messages.js';
 import { HOOK_HELP, HOOK_LABEL, HOOK_PLACEHOLDER, NOTE_HELP, NOTE_LABEL } from '../lib/ui.js';
 import HookHint from './HookHint.jsx';
 import { IMPORT_STATUSES, cellText, parsePaste, resolveProgress } from '../lib/importer.js';
@@ -34,7 +34,7 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-const BLANK = { name: '', city: '', owner: '', ig: '', fb: '', email: '', site: '', problem: 'nosite', hook: '', note: '', account: '' };
+const BLANK = { name: '', city: '', owner: '', ig: '', fb: '', email: '', site: '', problem: 'nosite', hook: '', note: '', account: '', source: '' };
 
 /** Add (lead = null) or edit a lead. onSave must throw to keep the dialog open. */
 export function LeadDialog({ lead, onSave, onDelete, onClose }) {
@@ -50,6 +50,8 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!f.name.trim()) return setErr('Business name is required.');
+    // City is required for new leads so the Stats view can compare cities; older leads just show a warning.
+    if (!editing && !String(f.city || '').trim()) return setErr('City is required.');
     if (hookWordCount(f.hook) > HOOK_MAX_WORDS) return setErr(`The hook must be ${HOOK_MAX_WORDS} words or fewer: one true detail you saw on their page.`);
     setSaving(true);
     setErr('');
@@ -82,7 +84,14 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
       <form onSubmit={submit} ref={ref} className="stack" noValidate>
         <div className="form-grid">
           <div className="wide">{text('name', 'Business name *', 'text', { autoFocus: true, required: true })}</div>
-          {text('city', 'City')}
+          {text('city', editing ? 'City' : 'City *', 'text', editing ? {} : { required: true })}
+          <label className="field">
+            <span>Source (where you found them)</span>
+            <select value={f.source ?? ''} onChange={set('source')}>
+              <option value="">Not set</option>
+              {Object.entries(SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </label>
           {text('owner', 'Owner (first name is used in the greeting)')}
           {text('ig', 'Instagram link', 'text', { inputMode: 'url' })}
           {text('fb', 'Facebook link', 'text', { inputMode: 'url' })}
@@ -207,6 +216,7 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
     try {
       const leads = ready.map(({ row, res }) => ({
         name: row.name, site: row.site, ig: row.ig, fb: row.fb, email: row.email, note: row.note, problem: row.problem,
+        city: row.city, source: row.source,
         ...(res.progress
           ? {
             status: res.progress.status, track: 'cold', step: res.progress.step, account: res.progress.account,
@@ -232,7 +242,9 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
           Paste rows copied from your sheet (tab-separated). Columns in order:
           {' '}<b>business, website, Instagram, Facebook, note, email</b>, then optionally, for leads you already messaged:
           {' '}<b>status</b> (queued, active, replied, won, lost, done), <b>step</b> (0-4 messages already sent),
-          {' '}<b>lastSentAt</b> (YYYY-MM-DD) and <b>account</b> (A, B or C). A header row is ignored.
+          {' '}<b>lastSentAt</b> (YYYY-MM-DD) and <b>account</b> (A, B or C), then <b>city</b> and <b>source</b>
+          {' '}(groups, ads, marketplace, maps, instagram, other). With a header row, city and source are found by their
+          {' '}column name wherever they are.
           Duplicate names are skipped, tracking parameters are removed, and the problem is guessed.
         </p>
         <textarea
@@ -272,7 +284,8 @@ export function ImportDialog({ existingNames, cfg, onImport, onClose }) {
               {items.slice(0, 200).map((it) => (
                 <div className={`imp-row ${it.state}`} key={`${it.row.name}-${it.i}`}>
                   <div className="imp-head">
-                    <b>{it.row.name}{it.row.email ? ` · ${it.row.email}` : ''}</b>
+                    <b>{it.row.name}{it.row.city ? ` · ${it.row.city}` : ''}{it.row.email ? ` · ${it.row.email}` : ''}</b>
+                    {it.row.source && <span className="tag">{SOURCES[it.row.source]}</span>}
                     <span className={`tag tag-${it.row.problem}`}>{it.state === 'dup' ? 'duplicate' : PROBLEMS[it.row.problem]}</span>
                   </div>
 

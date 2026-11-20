@@ -3,7 +3,9 @@ import { dayToIso, parseDay, ymd } from './dates.js';
 // Parses rows pasted from a spreadsheet. Column order:
 //   business, website, Instagram, Facebook, note, email
 // optional progress columns (leads you already messaged before using the app):
-//   status, step, lastSentAt (YYYY-MM-DD), account (A or B)
+//   status, step, lastSentAt (YYYY-MM-DD), account (A, B or C)
+// optional tracking columns: city, source (groups, ads, marketplace, maps, instagram, other)
+// With a header row, "city" and "source" are found by name in any column; without one they are columns 11 and 12.
 
 const EMPTY = /^(?:|none|n\/a|na|no|-|--|—|null|no website|no site)$/i;
 const TRACKING = /^(?:fbclid|gclid|igshid|igsh|mc_cid|mc_eid|_ga|ref|ref_src|utm_.*|fb_.*)$/i;
@@ -56,6 +58,25 @@ const isSocialHost = (url, host) => {
 };
 
 export const IMPORT_STATUSES = ['queued', 'active', 'replied', 'won', 'lost', 'done'];
+
+export const IMPORT_SOURCES = ['groups', 'ads', 'marketplace', 'maps', 'instagram', 'other'];
+const SOURCE_ALIASES = {
+  group: 'groups', 'fb groups': 'groups', 'facebook groups': 'groups', 'facebook group': 'groups',
+  ad: 'ads', 'fb ads': 'ads', 'facebook ads': 'ads',
+  'facebook marketplace': 'marketplace', 'fb marketplace': 'marketplace',
+  map: 'maps', 'google maps': 'maps', google: 'maps', gmb: 'maps',
+  ig: 'instagram', insta: 'instagram',
+};
+
+/** A pasted source cell as one of IMPORT_SOURCES; anything unknown but non-empty becomes "other". */
+export function normSource(v) {
+  const s = cellText(v).toLowerCase().replace(/\s+/g, ' ');
+  if (!s) return '';
+  if (IMPORT_SOURCES.includes(s)) return s;
+  return SOURCE_ALIASES[s] || 'other';
+}
+
+const DEFAULT_TRACKING = { city: 10, source: 11 };
 
 const blankCell = (v) => /^(?:|-|--|—|n\/a|na|none|null)$/i.test(String(v ?? '').trim());
 export const cellText = (v) => (blankCell(v) ? '' : String(v).trim());
@@ -149,9 +170,17 @@ export function parsePaste(text, existingNames = []) {
   let skippedEmpty = 0;
 
   const lines = String(text || '').split(/\r?\n/).filter((l) => l.trim());
+  let cols = { ...DEFAULT_TRACKING };
   lines.forEach((line, i) => {
     const cells = line.split('\t').map((c) => c.trim());
-    if (i === 0 && /^(business|business name|name)$/i.test(cells[0])) return;
+    if (i === 0 && /^(business|business name|name)$/i.test(cells[0])) {
+      const find = (re, fallback) => {
+        const at = cells.findIndex((c) => re.test(c));
+        return at >= 0 ? at : fallback;
+      };
+      cols = { city: find(/^city$/i, DEFAULT_TRACKING.city), source: find(/^(source|lead source|found on|found via)$/i, DEFAULT_TRACKING.source) };
+      return;
+    }
     const name = cells[0];
     if (!name) { skippedEmpty++; return; }
 
@@ -163,14 +192,17 @@ export function parsePaste(text, existingNames = []) {
     if (site && isSocialHost(site, 'instagram.com')) { ig = ig || site; site = ''; }
     if (site && isSocialHost(site, 'facebook.com')) { fb = fb || site; site = ''; }
 
-    const email = extractEmail(cells[5], note, cells.slice(10).join(' '));
+    const city = cellText(cells[cols.city]).slice(0, 100);
+    const source = normSource(cells[cols.source]);
+    const extra = cells.slice(10).filter((_, j) => j + 10 !== cols.city && j + 10 !== cols.source);
+    const email = extractEmail(cells[5], note, extra.join(' '));
     const key = normName(name);
     const dup = seen.has(key);
     if (dup) skippedDup++;
     seen.add(key);
 
     rows.push({
-      name, site, ig, fb, email, note,
+      name, site, ig, fb, email, note, city, source,
       problem: guessProblem({ site, note }),
       dup,
       raw: rawProgress(cells),
