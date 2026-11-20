@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { cellText, parsePaste, resolveProgress } from '../client/src/lib/importer.js';
 import { addDays, dayToIso, parseDay, ymd } from '../client/src/lib/dates.js';
 import { buildToday, netSends, nextAction, parseConfig, pipelineStats, weekStats } from '../client/src/lib/schedule.js';
@@ -201,7 +202,7 @@ test('the due date is the same calendar day in every timezone', () => {
     console.log(JSON.stringify({ errors: r.errors, storedDay: ymd(new Date(r.progress.lastSentAt)), day, overdueDays: n.overdueDays }));
   `;
   for (const TZ of ['UTC', 'Asia/Karachi', 'America/Los_Angeles', 'Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
-    const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ }, encoding: 'utf8', cwd: new URL('..', import.meta.url).pathname }));
+    const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ }, encoding: 'utf8', cwd: fileURLToPath(new URL('..', import.meta.url)) }));
     assert.deepEqual(out.errors, [], TZ);
     assert.equal(out.storedDay, out.day, `${TZ}: stored day`);
     assert.equal(out.overdueDays, 0, `${TZ}: step 2 sent 3 days ago is due today (gap 3)`);
@@ -210,7 +211,11 @@ test('the due date is the same calendar day in every timezone', () => {
 
 // ------------------------------------------------------------------ API: Log backfill
 
+// The API tests run "on" NOW: the server's 14-day log window and future-date checks read Date.now(), so pin it
+// to NOW while a test server is open. Otherwise these tests start failing once the real date passes NOW + 14 days.
 async function setup() {
+  const realNow = Date.now;
+  Date.now = () => NOW.getTime();
   const store = memoryStore();
   await store.init();
   const server = http.createServer(createApp({ store, env: {} }));
@@ -220,7 +225,7 @@ async function setup() {
     const res = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: body !== undefined ? JSON.stringify(body) : undefined });
     return { status: res.status, json: await res.json().catch(() => ({})) };
   };
-  return { store, call, close: () => new Promise((r) => server.close(r)) };
+  return { store, call, close: () => new Promise((r) => server.close(r)).finally(() => { Date.now = realNow; }) };
 }
 
 // What the import dialog sends for a validated row.
@@ -356,7 +361,7 @@ test('imported log rows never count toward today\'s meters, sent list, progress 
     assert.deepEqual([t.meters.A.used, t.meters.B.used, t.meters.followups.sent], [0, 0, 0]);
     assert.equal(t.sentToday.length, 0);
     assert.equal(t.progress.sent, 0);
-    assert.deepEqual(t.remaining, { A: 10, B: 10 }, 'the full daily allowance is still open');
+    assert.deepEqual(t.remaining, { A: 10, B: 10, C: 10 },'the full daily allowance is still open');
     assert.equal(t.newDMs.length, 12);
     assert.deepEqual(weekStats(leads, log, NOW), { streak: 0, sent: 0, replies: 0, won: 0 });
 

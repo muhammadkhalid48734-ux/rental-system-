@@ -206,7 +206,7 @@ test('GOOGLE_SERVICE_ACCOUNT_JSON accepts a JSON string or a file path', () => {
   assert.deepEqual(loadCredentials(JSON.stringify(key)), { credentials: key });
   const escaped = JSON.stringify({ ...key, private_key: '-----BEGIN-----\\nabc\\n-----END-----\\n' }); // literal backslash-n
   assert.equal(loadCredentials(escaped).credentials.private_key, key.private_key);
-  assert.match(loadCredentials('./credentials/service-account.json').keyFile, /credentials\/service-account\.json$/);
+  assert.match(loadCredentials('./credentials/service-account.json').keyFile, /credentials[\\/]service-account\.json$/);
   assert.throws(() => loadCredentials('{ not json'), /not valid JSON/);
 });
 
@@ -497,6 +497,6 @@ test('vercel.json: one catch-all function, CSP matches the server constant, noth
 });
 
 test('.gitignore keeps secrets and dependencies out of git', () => {
-  const ig = fs.readFileSync(new URL('../.gitignore', import.meta.url), 'utf8').split('\n');
+  const ig = fs.readFileSync(new URL('../.gitignore', import.meta.url), 'utf8').split(/\r?\n/);
   for (const need of ['.env', 'node_modules/', 'credentials/', '*service-account*.json', '*-key.json']) assert.ok(ig.includes(need), need);
 });
