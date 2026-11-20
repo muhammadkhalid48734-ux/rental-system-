@@ -1,4 +1,4 @@
-import { DEMO_CLOSING, REPLY_ENDING } from '../client/src/lib/messages.js';
+import { allowedAmounts, DEMO_CLOSING, demoVideoLine, priceLine, withPriceLine } from '../client/src/lib/messages.js';
 import { LINK_TOKEN } from './prompts.js';
 
 const URL_RE = /\bhttps?:\/\/|\bwww\.|\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|co|us|app|site|biz|info|shop|online|store)\b/i;
@@ -24,6 +24,7 @@ const TIMING_RE = new RegExp([
   String.raw`\blater today\b`,
   String.raw`\bthis (?:morning|afternoon|evening)\b`,
   String.raw`\b(?:right away|immediately|asap)\b`,
+  String.raw`\b(?:shortly|today|tonight|tomorrow)\b`,
 ].join('|'), 'i');
 
 // Things the first message and every other DM must never mention.
@@ -39,9 +40,11 @@ const FORBIDDEN = [
 export const hasDeliveryPromise = (text) => TIMING_RE.test(text);
 
 const norm = (t) => t.toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim();
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const wordCount = (t) => t.trim().split(/\s+/).filter(Boolean).length;
 const emojiCount = (t) => (t.match(/\p{Extended_Pictographic}/gu) || []).length;
+const endsWithQuestion = (t) => /\?\s*\p{Extended_Pictographic}?\s*$/u.test(t);
 
 // kind -> [minWords, maxWords] for the model's draft
 const LIMITS = {
@@ -63,11 +66,38 @@ export function cleanOutput(text) {
   return t;
 }
 
-/** The photo-permission reply always ends with the same sentence; add it when the model left it out. */
-export function finalize(kind, text) {
+/**
+ * Runs AFTER validateDraft passed. The yes-reply gets the fixed price line from Config, placed before its closing
+ * question; the model never writes a price. Every other kind is returned as is.
+ */
+export function finalize(kind, text, config = {}) {
   const t = text.trim();
-  if (kind === 'replyAck' && !norm(t).endsWith(norm(REPLY_ENDING))) return `${t} ${REPLY_ENDING}`;
+  if (kind === 'replyAck') return withPriceLine(t, config);
   return t;
+}
+
+/** Dollar amounts in a text, as numbers. */
+export const amountsIn = (text) => [...String(text).matchAll(/\$\s?(\d[\d,]*(?:\.\d+)?)/g)].map((m) => Number(m[1].replace(/,/g, '')));
+
+/**
+ * Final check on the assembled yes-reply: the price line is there exactly once, every dollar amount is one of the
+ * Config amounts, and outside the price line the pre-demo rules still hold.
+ */
+export function validateReplyFinal(text, config) {
+  const v = [];
+  const line = priceLine(config);
+  const parts = text.split(line);
+  if (parts.length !== 2) v.push('the price line must appear exactly once');
+  const allowed = allowedAmounts(config);
+  const bad = amountsIn(text).filter((n) => !allowed.has(n));
+  if (bad.length) v.push(`it contains amounts that are not in Settings: ${bad.map((n) => `$${n}`).join(', ')}`);
+  const rest = parts.join(' ');
+  if (URL_RE.test(rest)) v.push('it contains a link or website address');
+  if (PRICE_RE.test(rest)) v.push('it contains a price outside the price line');
+  if (TIMING_RE.test(text)) v.push('it promises when or how fast something will arrive');
+  for (const [re, why] of FORBIDDEN) if (re.test(rest)) v.push(why);
+  if (!endsWithQuestion(text)) v.push('it must end with a question');
+  return v;
 }
 
 /**
@@ -101,42 +131,57 @@ export function validateDraft(kind, text, { lead } = {}) {
     const n = norm(t);
     if (!n.includes('free demo')) v.push('it must offer a "free demo"');
     if (!n.includes('no obligation')) v.push('it must say "No obligation"');
-    if (!/\?\s*\p{Extended_Pictographic}?\s*$/u.test(t)) v.push('it must end with a question');
+    if (!/\bapprov\w*/i.test(t)) v.push('it must say nothing gets booked without them: they approve every request');
+    if (!endsWithQuestion(t)) v.push('it must end with a question');
     const need = hookWords(lead?.hook);
     if (need.length && need.filter((w) => n.includes(w)).length < Math.ceil(need.length / 2)) {
       v.push(`it must mention the hook detail: "${String(lead.hook).trim()}"`);
     }
   }
 
-  if (kind === 'replyAck' && !norm(t).endsWith(norm(REPLY_ENDING))) v.push(`it must end with: ${REPLY_ENDING}`);
+  if (kind === 'replyAck') {
+    if (!/\btop\s*(?:3|three)\b/i.test(t)) v.push('it must ask for their top 3 rentals');
+    if (!endsWithQuestion(t)) v.push('it must end with a question');
+  }
 
   if (kind === 'demo') {
     if (t.split(LINK_TOKEN).length !== 2) v.push(`it must contain ${LINK_TOKEN} exactly once`);
-    if (!/\bonly you\b/i.test(t) || !/\bprivate\b/i.test(t)) v.push('it must say the link is private and only they have it');
-    if (!/\bfor show\b/i.test(t)) v.push('it must say the calendar and the form in this version are for show');
+    if (!/\bonly you\b/i.test(t)) v.push('it must say only they have the link');
+    if (!/\bsamples?\b/i.test(t)) v.push('it must say the photos and info are samples for now');
   } else if (t.includes(LINK_TOKEN)) {
     v.push('it contains a placeholder token that is only allowed in demo messages');
   }
   return v;
 }
 
-/** Fills the link into a demo draft and makes sure the closing sentence is there. */
+const CLOSING_AT_END = new RegExp(`\\s*${escapeRe(DEMO_CLOSING)}\\s*$`, 'i');
+
+/**
+ * Fills the link into a demo draft, adds the video line when the lead has one (server-side, so the model never
+ * types a URL), and makes the message end with the closing question.
+ */
 export function assembleDemo(draft, lead) {
-  let t = draft.replaceAll(LINK_TOKEN, String(lead.demoLink).trim());
-  if (!norm(t).includes(norm(DEMO_CLOSING))) t = `${t.trim()}\n\n${DEMO_CLOSING}`;
-  return t;
+  let t = draft.replaceAll(LINK_TOKEN, String(lead.demoLink).trim()).trim().replace(CLOSING_AT_END, '').trim();
+  const video = String(lead.demoVideo || '').trim();
+  if (video) t = `${t}\n\n${demoVideoLine(video)}`;
+  return `${t}\n\n${DEMO_CLOSING}`;
 }
 
-/** Final checks on an assembled demo message: exact link once, no price anywhere, closing sentence. */
+/** Final checks on an assembled demo message: exact link (and video) once, no price anywhere, closing question. */
 export function validateDemoFinal(text, lead) {
   const v = [];
   const link = String(lead.demoLink).trim();
+  const video = String(lead.demoVideo || '').trim();
   if (text.split(link).length !== 2) v.push('the demo link must appear exactly once');
-  const rest = text.replace(link, '');
+  let rest = text.replace(link, '');
+  if (video) {
+    if (rest.split(video).length !== 2) v.push('the demo video link must appear exactly once');
+    rest = rest.replace(video, '');
+  }
   if (URL_RE.test(rest)) v.push('it contains an extra link');
   if (PRICE_RE.test(rest) || /\$\s?\d/.test(rest)) v.push('a demo delivery message must not contain any price');
   if (TIMING_RE.test(rest)) v.push('it promises when or how fast something will arrive');
   for (const [re, why] of FORBIDDEN) if (re.test(rest)) v.push(why);
-  if (!norm(text).includes(norm(DEMO_CLOSING))) v.push(`it must end with: ${DEMO_CLOSING}`);
+  if (!norm(text).endsWith(norm(DEMO_CLOSING))) v.push(`it must end with: ${DEMO_CLOSING}`);
   return v;
 }

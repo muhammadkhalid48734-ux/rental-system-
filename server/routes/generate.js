@@ -4,7 +4,7 @@ import { rowToLead } from '../schema.js';
 import { HttpError, ah } from '../util.js';
 import { earlierMessages } from '../history.js';
 import { KINDS, PROMPT_VERSION, buildSystemPrompt, buildUserPrompt } from '../prompts.js';
-import { assembleDemo, cleanOutput, finalize, validateDemoFinal, validateDraft } from '../validate.js';
+import { assembleDemo, cleanOutput, finalize, validateDemoFinal, validateDraft, validateReplyFinal } from '../validate.js';
 import { LlmError } from '../llm.js';
 import { readConfig } from './config.js';
 
@@ -55,7 +55,7 @@ export function generateRouter({ store, llm, queue, env = process.env, now = () 
       });
       let draft;
       try {
-        draft = finalize(kind, cleanOutput(await queue.run(() => llm.generate({ system: buildSystemPrompt(), user }, { env }))));
+        draft = cleanOutput(await queue.run(() => llm.generate({ system: buildSystemPrompt(), user }, { env })));
       } catch (err) {
         if (err instanceof LlmError && err.code === 'bad_output') {
           violation = 'the answer was empty or cut off';
@@ -65,9 +65,14 @@ export function generateRouter({ store, llm, queue, env = process.env, now = () 
         throw err;
       }
 
+      // The model's own text is checked first (pre-demo rules: no price). Only then does the server add what the
+      // model must never write itself: the price line from Config (yes-reply) or the demo link and video.
       let problems = validateDraft(kind, draft, { lead });
       let text = draft;
-      if (!problems.length && kind === 'demo') {
+      if (!problems.length && kind === 'replyAck') {
+        text = finalize(kind, draft, config);
+        problems = validateReplyFinal(text, config);
+      } else if (!problems.length && kind === 'demo') {
         text = assembleDemo(draft, lead);
         problems = validateDemoFinal(text, lead);
       }

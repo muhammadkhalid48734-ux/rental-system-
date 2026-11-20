@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSystemPrompt, KINDS, buildUserPrompt } from '../server/prompts.js';
 import { validateDraft } from '../server/validate.js';
-import { DEMO_CLOSING, REPLY_ENDING } from '../client/src/lib/messages.js';
+import { APPROVAL_LINE, DEMO_CLOSING } from '../client/src/lib/messages.js';
 
 const lead = {
   id: 'secret-id-123', name: 'Hop & Pop Party Rentals', owner: 'Dana Rivers', city: 'Mesa',
@@ -25,8 +25,13 @@ test('system prompt states the new messaging rules and has one GOOD and one BAD 
     'Never claim to be local; we are a small remote studio.',
     '"I came across {Business}"',
     'and like what you offer',
-    "ONE sentence stating the lead's real problem in your own words",
-    'build them a free demo of a modern site with a gallery and a booking request form',
+    "ONE sentence about the lead's problem in your own words",
+    'when `note` is present, base it on the note',
+    "do not say customers can't check dates or book online unless the note says so",
+    'could build them a free demo of a simple site where parents can see their rentals and send a booking request',
+    'nothing gets booked without them, they approve every request',
+    APPROVAL_LINE,
+    'booking REQUEST form: the owner approves every request',
     '"No obligation."',
     'Want me to put one together?',
     'Say "free demo", never "free website".',
@@ -35,15 +40,16 @@ test('system prompt states the new messaging rules and has one GOOD and one BAD 
     'no promise about when or how fast anything will arrive',
     'Never reuse phrasing from the earlier messages sent to this lead or from previousVariants.',
     'in case your message got buried',
-    'with a booking request form customers can send their date and item without messaging the owner first, so their DMs stay for real conversations',
-    'Follow-up 3 is a polite sign-off with no pitch.',
-    `ends with exactly: ${REPLY_ENDING}`,
-    'nothing is public',
-    'are for show so they can see the layout',
-    `end with exactly: ${DEMO_CLOSING}`,
-    'did the link open okay on their phone',
-    'remove any photo they would rather not have in it',
-    'reply "go live"',
+    'many parents search Google before they message anyone',
+    '"Want to see a free demo?"',
+    'Follow-up 3 is a polite last note with no pitch.',
+    'asking for their top 3 rentals',
+    'Never write a price in it: the server adds a fixed line about pricing.',
+    'the photos and info are samples for now',
+    `ends with exactly: ${DEMO_CLOSING}`,
+    'did the demo open okay on their phone',
+    'swap photos, items, prices or colors',
+    'keep their demo saved for spring or close it out',
     'Output only the message text.',
   ]) assert.ok(SYSTEM_PROMPT.includes(rule), `missing rule: ${rule}`);
   assert.equal((SYSTEM_PROMPT.match(/Example of a GOOD/g) || []).length, 1);
@@ -55,7 +61,11 @@ test('the old delivery-time wording and the old package list are gone from every
   for (const kind of KINDS) all.push(buildUserPrompt({ kind, lead: { ...lead, demoLink: 'https://d.example/x' } }));
   for (const text of all) {
     assert.doesNotMatch(text, /usually within the hour|support hours|otherwise by the next morning|saying yes|TURNAROUND|\{\{|PACKAGES|packages by name|setup and monthly/i);
+    assert.doesNotMatch(text, /shortly|for show|nothing is public|go live|modern site with a gallery/i);
   }
+  // the rules name "automation" only as a thing to avoid (the BAD example shows it on purpose)
+  const rules = SYSTEM_PROMPT.split('Example of a BAD')[0];
+  assert.doesNotMatch(rules.replace(/no mention of automation/g, ''), /automat/i);
 });
 
 test('user prompt contains only whitelisted stored lead fields', () => {
@@ -88,9 +98,10 @@ test('prompt without hint / history omits those sections; violation is stated on
 });
 
 test('demo prompt carries no package names or prices, and asks only for the link token', () => {
-  const p = buildUserPrompt({ kind: 'demo', lead: { ...lead, demoLink: 'https://demo.example/x' } });
+  const p = buildUserPrompt({ kind: 'demo', lead: { ...lead, demoLink: 'https://demo.example/x', demoVideo: 'https://video.example/v' } });
   assert.ok(!/Get Found|Get Booked|Get Paid|\$\s?\d|packages/i.test(p), 'no plans or prices in the prompt');
   assert.ok(!p.includes('demo.example/x'), 'the link is substituted by the server, not sent');
+  assert.ok(!p.includes('video.example'), 'the video link is added by the server, not sent');
   assert.ok(p.includes('[[LINK]]') && !p.includes('[[PACKAGES]]'));
   assert.ok(p.includes(DEMO_CLOSING));
 });
@@ -118,20 +129,25 @@ test('the GOOD example in the system prompt passes our own validator and the 90-
 test('each kind asks for the new structure and never for a delivery time', () => {
   const task = (kind) => buildUserPrompt({ kind, lead: { ...lead, demoLink: 'https://d.example/x' } }).match(/Task: ([^\n]*)/)[1];
   assert.match(task('cold'), /35-90 words/);
+  assert.match(task('cold'), /a free demo of a simple site where parents can see your rentals and send a booking request/);
+  assert.match(task('cold'), /nothing gets booked without them, they approve every request/);
   assert.match(task('followup1'), /buried/);
-  assert.match(task('followup2'), /date and item without messaging you first/);
+  assert.match(task('followup2'), /search Google before they message anyone/);
+  assert.match(task('followup2'), /Want to see a free demo\?/);
   assert.match(task('followup3'), /no pitch/);
-  assert.ok(task('replyAck').endsWith(REPLY_ENDING));
-  assert.ok(task('demo').includes(DEMO_CLOSING));
-  assert.match(task('demoNudge1'), /on their phone/);
-  assert.match(task('demoNudge2'), /remove any photo/);
-  assert.match(task('demoNudge3'), /go live/);
-  for (const kind of KINDS) assert.doesNotMatch(task(kind), /within the hour|next morning|word for word/i);
+  assert.match(task('replyAck'), /top 3 rentals/);
+  assert.match(task('replyAck'), /Do not write any price/);
+  assert.ok(task('demo').endsWith(DEMO_CLOSING));
+  assert.match(task('demo'), /samples for now/);
+  assert.match(task('demoNudge1'), /which rental people ask about most/);
+  assert.match(task('demoNudge2'), /swap photos, items, prices or colors/);
+  assert.match(task('demoNudge3'), /saved for spring or close it out/);
+  for (const kind of KINDS) assert.doesNotMatch(task(kind), /within the hour|next morning|word for word|shortly|automatic/i);
 });
 
 test('the prompt version is a positive integer shared with the client', async () => {
   const { PROMPT_VERSION } = await import('../server/prompts.js');
   const msg = await import('../client/src/lib/messages.js');
-  assert.ok(Number.isInteger(PROMPT_VERSION) && PROMPT_VERSION >= 2);
+  assert.equal(PROMPT_VERSION, 3);
   assert.equal(PROMPT_VERSION, msg.PROMPT_VERSION);
 });

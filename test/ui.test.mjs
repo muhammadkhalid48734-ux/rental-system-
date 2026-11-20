@@ -215,3 +215,23 @@ test('Today has the bulk button, Generate all skips old drafts, the card shows t
   assert.match(batch, /mode === 'old'/);
   assert.match(batch, /needsNewWording/);
 });
+
+// ---------------------------------------------------------------- pitch v3
+
+test('no "shortly" anywhere in the app or the prompts (the validator regex that blocks it is the only mention)', () => {
+  const files = [...srcFiles, ...walk(path.join(root, 'server'))].filter((f) => !f.endsWith(path.join('server', 'validate.js')));
+  for (const f of files) assert.ok(!/shortly/i.test(fs.readFileSync(f, 'utf8')), path.relative(root, f));
+  assert.match(read('server/validate.js'), /shortly/, 'the validator still blocks it');
+});
+
+test('demo and nudge stages: "Copy as email" only with an email on the lead, plus the send-in-DM hint', () => {
+  const card = read('client/src/components/LeadCard.jsx');
+  assert.match(card, /isDemoStage = \['demo', 'nudge1', 'nudge2', 'nudge3'\]\.includes\(stage\?\.key\)/);
+  assert.match(card, /\(!isDemoStage \|\| lead\.email\) && \(/);
+  assert.match(card, /Send demos in DM when you can; owners check Messenger more than email\./);
+});
+
+test('the demo video link can be entered on the card and in the edit dialog', () => {
+  assert.match(read('client/src/components/LeadCard.jsx'), /Demo video \(optional/);
+  assert.match(read('client/src/components/Dialogs.jsx'), /'demoVideo'/);
+});

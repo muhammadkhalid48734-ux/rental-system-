@@ -238,8 +238,8 @@ export default function App() {
       await api.patchLead(id, patch);
       if (msg) toast(msg);
     }, opts),
-    send: (lead, stage, account, channel, demoLink, text) => run(async () => {
-      const eff = demoLink !== undefined && lead.status === 'replied' ? { ...lead, demoLink } : lead;
+    send: (lead, stage, account, channel, demoLink, text, demoVideo) => run(async () => {
+      const eff = demoLink !== undefined && lead.status === 'replied' ? { ...lead, demoLink, demoVideo: demoVideo ?? lead.demoVideo } : lead;
       const patch = applySend(eff, stage, account, new Date().toISOString());
       const prev = pick(lead, Object.keys(patch));
       const entry = { leadId: lead.id, account: patch.account, track: stage.logTrack, step: stage.logStep };

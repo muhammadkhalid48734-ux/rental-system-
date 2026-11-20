@@ -127,7 +127,12 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   // The demo link is typed into the card; the message switches as soon as a valid link is present.
   const [linkDraft, setLinkDraft] = useState(lead.demoLink || '');
   useEffect(() => { setLinkDraft(lead.demoLink || ''); }, [lead.demoLink]);
-  const eff = lead.status === 'replied' ? { ...lead, demoLink: linkDraft.trim() } : lead;
+  // Optional short screen recording; its line is added to the demo message (by the server for AI drafts).
+  const [videoDraft, setVideoDraft] = useState(lead.demoVideo || '');
+  useEffect(() => { setVideoDraft(lead.demoVideo || ''); }, [lead.demoVideo]);
+  const eff = lead.status === 'replied'
+    ? { ...lead, demoLink: linkDraft.trim(), demoVideo: hasLink(videoDraft) ? videoDraft.trim() : '' }
+    : lead;
 
   // Optimistic copy of the "confirmed" checkbox; reset to the Sheet's value after every reload.
   const [verified, setVerified] = useState(lead.verified);
@@ -135,6 +140,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
 
   const stage = getStage(eff);
   const showMessage = !!stage && stage.sendable;
+  const isDemoStage = ['demo', 'nudge1', 'nudge2', 'nudge3'].includes(stage?.key);
   const due = dueBadge(lead, cfg);
 
   const isNew = stage?.isNew;
@@ -204,7 +210,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   const needAuto = !!(
     showMessage && env.llm.configured && gkey && entry.draft === null
     && !entry.versions.some((x) => x.source === 'personalized')
-    && !(stage?.key === 'demo' && lead.demoLink !== eff.demoLink)
+    && !(stage?.key === 'demo' && (lead.demoLink !== eff.demoLink || (lead.demoVideo || '') !== eff.demoVideo))
   );
   useEffect(() => {
     if (!needAuto) return undefined;
@@ -257,7 +263,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
       actions.toast(blocked, { kind: 'warn', ms: 5000 });
       return;
     }
-    actions.send(lead, stage, account, ch, eff.demoLink, text);
+    actions.send(lead, stage, account, ch, eff.demoLink, text, eff.demoVideo);
   };
 
   const copy = () => {
@@ -318,6 +324,15 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
       return;
     }
     actions.patch(lead.id, { demoLink: link }, undefined, { quiet: true });
+  };
+  const saveVideo = () => {
+    const link = videoDraft.trim();
+    if (link === (lead.demoVideo || '')) return;
+    if (link && !hasLink(link)) {
+      actions.toast('The video link must start with http:// or https://', { kind: 'warn' });
+      return;
+    }
+    actions.patch(lead.id, { demoVideo: link }, undefined, { quiet: true });
   };
 
   const menuItems = [];
@@ -391,6 +406,20 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
             value={linkDraft}
             onChange={(e) => setLinkDraft(e.target.value)}
             onBlur={saveLink}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+          />
+        </label>
+      )}
+      {lead.status === 'replied' && (
+        <label className="field">
+          <span className="label">Demo video (optional: a short screen recording of a customer sending a request)</span>
+          <input
+            type="url"
+            inputMode="url"
+            placeholder="https://"
+            value={videoDraft}
+            onChange={(e) => setVideoDraft(e.target.value)}
+            onBlur={saveVideo}
             onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
           />
         </label>
@@ -530,10 +559,13 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
               <button className={flashKey === 'copy' ? 'btn btn-flash' : cls('copy')} aria-disabled={awaitingAI || undefined} onClick={copy}>
                 <Icon as={flashKey === 'copy' ? I.Check : I.CopySimple} /> {flashKey === 'copy' ? 'Copied' : 'Copy'}
               </button>
-              <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} aria-disabled={awaitingAI || undefined} onClick={copyEmail}>
-                <Icon as={flashKey === 'email' ? I.Check : I.EnvelopeSimple} /> {flashKey === 'email' ? 'Copied' : 'Copy as email'}
-              </button>
+              {(!isDemoStage || lead.email) && (
+                <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} aria-disabled={awaitingAI || undefined} onClick={copyEmail}>
+                  <Icon as={flashKey === 'email' ? I.Check : I.EnvelopeSimple} /> {flashKey === 'email' ? 'Copied' : 'Copy as email'}
+                </button>
+              )}
             </div>
+            {isDemoStage && <p className="hint">Send demos in DM when you can; owners check Messenger more than email.</p>}
             {lead.email && <p className="hint">Email: <span className="num">{lead.email}</span></p>}
             <p className="hint">
               {copied

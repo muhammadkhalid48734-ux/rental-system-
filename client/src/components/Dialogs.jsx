@@ -134,6 +134,7 @@ export function LeadDialog({ lead, onSave, onDelete, onClose }) {
                 <input type="number" min={0} max={4} value={f.step} onChange={set('step')} />
               </label>
               <div className="wide">{text('demoLink', 'Demo link', 'text', { inputMode: 'url' })}</div>
+              <div className="wide">{text('demoVideo', 'Demo video link (optional)', 'text', { inputMode: 'url' })}</div>
               <label className="check wide">
                 <input type="checkbox" checked={!!f.verified} onChange={set('verified')} />
                 <span>I opened the site and confirmed the problem</span>

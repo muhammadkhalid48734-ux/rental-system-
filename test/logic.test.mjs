@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   buildMessage, getStage, applySend, quickReplies, toEmailText, plans, planPrice, allowedAmounts, recommendReply, emailSubject,
-  genericHookWords, hookWordCount, TERMS_LINE, REPLY_ENDING, DEMO_CLOSING,
+  genericHookWords, hookWordCount, TERMS_LINE, DEMO_CLOSING, priceLine, replyBody, startsAt, goLiveReply,
 } from '../client/src/lib/messages.js';
-import { hasDeliveryPromise, validateDraft } from '../server/validate.js';
+import { amountsIn, hasDeliveryPromise, validateDraft, validateReplyFinal } from '../server/validate.js';
 import { buildToday, parseConfig, dueInfo, netSends, weekStats } from '../client/src/lib/schedule.js';
 import { parsePaste, cleanUrl, guessProblem } from '../client/src/lib/importer.js';
 
@@ -23,7 +23,7 @@ test('pitch: greeting, hook fallback, no link, no price, no timing, honest wordi
   const noOwner = buildMessage(getStage(lead()), lead(), cfg);
   assert.match(noOwner, /^Hi!\n/);
   assert.match(noOwner, /I came across Bounce Co and like what you offer\./);
-  assert.match(noOwner, /I run a small web design studio and I'd be glad to build you a free demo of a modern site with a gallery and a booking request form\. No obligation\. Want me to put one together\?$/);
+  assert.match(noOwner, /I run a small web design studio and could build you a free demo of a simple site where parents can see your rentals and send a booking request\. Nothing gets booked without you, you approve every request\. No obligation\. Want me to put one together\?$/);
   assert.doesNotMatch(noOwner, /https?:|www\./);
   assert.doesNotMatch(noOwner, /already (built|made)|I built|I made|free website|automat|monthly|\$\d/i);
 
@@ -37,8 +37,45 @@ test('problem sentences', () => {
   assert.match(m('down', 'https://www.bounce.com/x'), /I tried opening bounce\.com and it wasn't loading/);
   assert.match(m('parked', ''), /'get this domain' page/);
   assert.match(m('nosite', ''), /don't have a website yet/);
-  assert.match(m('social', ''), /disappear from the feed/);
-  assert.match(m('outdated', 'x.com'), /feels a bit dated/);
+  assert.match(m('social', ''), /slide down the feed/);
+  assert.equal(
+    m('outdated', 'x.com').split('\n\n')[1].replace(/^I came across Bounce Co and like what you offer\. /, ''),
+    'I took a look at your website on my phone and it could be easier for parents to browse your rentals.',
+  );
+  for (const p of ['outdated', 'down', 'parked', 'nosite', 'social']) {
+    assert.doesNotMatch(m(p, 'x.com'), /check dates|book online/i, `${p}: no unverified booking claim`);
+  }
+});
+
+test('pitch never contains automation wording, for every problem, hook and owner', () => {
+  for (const problem of ['outdated', 'down', 'parked', 'nosite', 'social']) {
+    for (const hook of ['', 'the blue and yellow castle photos']) {
+      const l = lead({ problem, hook, owner: 'Jamie' });
+      const msg = buildMessage({ key: 'pitch' }, l, cfg);
+      assert.doesNotMatch(msg, /automat/i, `${problem}/${hook}`);
+      assert.match(msg, /Nothing gets booked without you, you approve every request\./);
+      assert.match(msg, /free demo of a simple site where parents can see your rentals and send a booking request/);
+      assert.match(msg, /No obligation\. Want me to put one together\?$/);
+    }
+  }
+});
+
+test('follow-ups: bump, new Google reason with approval, polite last note', () => {
+  const l = lead({ owner: 'Sam' });
+  const fu1 = buildMessage({ key: 'fu1' }, l, cfg);
+  const fu2 = buildMessage({ key: 'fu2' }, l, cfg);
+  const fu3 = buildMessage({ key: 'fu3' }, l, cfg);
+  assert.match(fu1, /in case it got buried/);
+  assert.match(fu1, /free demo/);
+  assert.match(fu1, /no pressure/);
+  assert.ok(fu1.endsWith('?'));
+  assert.match(fu2, /many parents search Google before they message anyone/);
+  assert.match(fu2, /request form/);
+  assert.match(fu2, /date and item/);
+  assert.match(fu2, /you still approve every request/);
+  assert.ok(fu2.endsWith('Want to see a free demo?'));
+  assert.match(fu3, /last note/);
+  assert.doesNotMatch(fu3, /free demo|want me to|\?/i, 'no pitch in the last note');
 });
 
 test('cold sequence: 4 messages then done; never more than 3 follow-ups', () => {
@@ -58,7 +95,12 @@ test('cold sequence: 4 messages then done; never more than 3 follow-ups', () => 
 test('replied flow: permission -> wait -> demo -> nudges -> done', () => {
   let l = lead({ status: 'replied', step: 1, repliedAt: daysAgo(0, 9), lastSentAt: daysAgo(2) });
   assert.equal(getStage(l).key, 'reply');
-  assert.ok(buildMessage(getStage(l), l, cfg).endsWith("You'll have it shortly."));
+  const reply = buildMessage(getStage(l), l, cfg);
+  assert.ok(reply.endsWith('what are your top 3 rentals?'));
+  assert.ok(reply.includes(priceLine(cfg)), 'price line from Config');
+  assert.match(reply, /only use photos from your page with your OK/);
+  assert.match(reply, /nothing goes live without your approval/);
+  assert.doesNotMatch(reply, /shortly/i);
   l = { ...l, ...applySend(l, getStage(l), 'A', daysAgo(0, 11)) };
   assert.equal(l.status, 'replied');
   assert.equal(getStage(l).key, 'replyWait');
@@ -67,12 +109,13 @@ test('replied flow: permission -> wait -> demo -> nudges -> done', () => {
   l.demoLink = 'https://demo.example/abc';
   assert.equal(getStage(l).key, 'demo');
   const demo = buildMessage(getStage(l), l, cfg);
-  assert.match(demo, /Only you have this link, and nothing is public\./);
-  assert.match(demo, /The calendar and the form in this version are for show, so you can see the layout\./);
-  assert.match(demo, /colors, wording, items, prices or photos/);
+  assert.match(demo, /Only you have this link\. Photos and info are samples for now\./);
   assert.ok(demo.includes('https://demo.example/abc'));
-  assert.ok(demo.endsWith("If you'd like to know how it works and what it costs, just ask."));
+  assert.ok(demo.endsWith('Which rental should be first on the page?'), 'the demo message ends with a question');
+  assert.doesNotMatch(demo, /video/i, 'no video line without a video');
   assert.doesNotMatch(demo, /\$|Recommended|setup|monthly|cancel anytime/i, 'no prices and no package list in the delivery message');
+  const withVideo = buildMessage(getStage({ ...l, demoVideo: 'https://video.example/v' }), { ...l, demoVideo: 'https://video.example/v' }, cfg);
+  assert.match(withVideo, /Here's a quick video of how a customer would send you a request: https:\/\/video\.example\/v\n\nWhich rental should be first on the page\?$/);
   l = { ...l, ...applySend(l, getStage(l), 'A', daysAgo(0)) };
   assert.deepEqual([l.track, l.step, l.status], ['demo', 1, 'active']);
 
@@ -83,7 +126,20 @@ test('replied flow: permission -> wait -> demo -> nudges -> done', () => {
   }
   assert.deepEqual(keys, ['nudge1', 'nudge2', 'nudge3']);
   assert.equal(l.status, 'done');
-  assert.match(buildMessage({ key: 'nudge3' }, l, cfg), /go live/);
+  const n = (key) => buildMessage({ key }, lead({ owner: 'Sam' }), cfg);
+  assert.equal(n('nudge1'), "Hi Sam! Did the demo open okay on your phone? Tell me which rental people ask about most and I'll put it first.");
+  assert.equal(n('nudge2'), "Hi Sam! Anything you'd change? I can swap photos, items, prices or colors, whatever makes it feel like yours.");
+  assert.equal(n('nudge3'), 'Hi Sam! No pressure at all. Should I keep your demo saved for spring, or close it out? Either answer is fine.');
+  for (const k of ['nudge1', 'nudge2', 'nudge3']) {
+    assert.doesNotMatch(n(k), /https?:|\$\d/, `${k}: no link, no price`);
+    assert.equal(hasDeliveryPromise(n(k)), false, `${k}: no timing promise`);
+  }
+});
+
+test('demo sending keeps the video link on the lead', () => {
+  const l = lead({ status: 'replied', repliedAt: daysAgo(0), demoLink: 'https://d.example/1', demoVideo: 'https://v.example/1' });
+  assert.equal(applySend(l, getStage(l), 'A', daysAgo(0)).demoVideo, 'https://v.example/1');
+  assert.equal('demoVideo' in applySend({ ...l, demoVideo: '' }, getStage(l), 'A', daysAgo(0)), false);
 });
 
 test('demo link replaces permission message even before it was sent', () => {
@@ -238,8 +294,8 @@ test('terms line and the recommended-plan reply', () => {
 test('quick replies: the new set, in order, with the exact wording that was asked for', () => {
   const q = quickReplies(cfg);
   assert.deepEqual(q.map((x) => x.title), [
-    'How much?', 'Is it really free?', 'What do you need from me?', 'Where are you based?', 'Do I own the site?', 'Facebook is enough', 'Too expensive', "I'll think about it",
-    'How do reviews work?', 'How does double-booking protection work?', 'What if I stop?', 'Not interested',
+    'How much?', 'Is it really free?', "What's the catch?", 'What do you need from me?', 'Where are you based?', 'Do I own the site?', 'Facebook is enough', 'Too expensive', "I'll think about it",
+    'Go live', 'How do reviews work?', 'How does double-booking protection work?', 'What if I stop?', 'Not interested',
   ]);
   const by = Object.fromEntries(q.map((x) => [x.title, x]));
   const [step1, step2, early] = by['How much?'].parts;
@@ -269,13 +325,15 @@ test('no template and no quick reply contains the old delivery-time wording or a
   for (const key of ['pitch', 'fu1', 'fu2', 'fu3', 'reply', 'nudge1', 'nudge2', 'nudge3']) {
     for (const problem of ['outdated', 'down', 'parked', 'nosite', 'social']) texts.push(buildMessage({ key }, lead({ problem, hook: 'the blue and yellow castle photos' }), c));
   }
-  texts.push(buildMessage({ key: 'demo' }, lead({ demoLink: 'https://d.example/x' }), c));
+  texts.push(buildMessage({ key: 'demo' }, lead({ demoLink: 'https://d.example/x', demoVideo: 'https://v.example/1' }), c));
   for (const x of quickReplies(c)) texts.push(...(x.parts ? x.parts.map((p) => p.text) : [x.text]));
   for (const t of texts) {
-    assert.doesNotMatch(t, /support hours|saying yes|next morning|within the hour|US time/i);
+    assert.doesNotMatch(t, /support hours|saying yes|next morning|within the hour|US time|shortly/i);
   }
+  // every outgoing template is free of timing promises (the double-booking reply describes a 24-hour hold feature)
+  for (const t of texts.filter((x) => !/24-hour hold/.test(x))) assert.equal(hasDeliveryPromise(t), false, t);
   // the offline templates satisfy our own validator, so an offline message is as safe as a generated one
-  const kinds = { pitch: 'cold', fu1: 'followup1', fu2: 'followup2', fu3: 'followup3', reply: 'replyAck', nudge1: 'demoNudge1', nudge2: 'demoNudge2', nudge3: 'demoNudge3' };
+  const kinds = { pitch: 'cold', fu1: 'followup1', fu2: 'followup2', fu3: 'followup3', nudge1: 'demoNudge1', nudge2: 'demoNudge2', nudge3: 'demoNudge3' };
   for (const [key, kind] of Object.entries(kinds)) {
     for (const problem of ['outdated', 'down', 'parked', 'nosite', 'social']) {
       const l = lead({ problem, owner: 'Sam', hook: 'the blue and yellow castle photos', site: 'https://sunnydaybounce.example' });
@@ -284,6 +342,10 @@ test('no template and no quick reply contains the old delivery-time wording or a
       assert.deepEqual(issues, [], `${key}/${problem}: ${msg}`);
     }
   }
+  // the yes-reply: its own text passes the pre-demo rules, the assembled message passes the price-line check
+  const rl = lead({ owner: 'Sam' });
+  assert.deepEqual(validateDraft('replyAck', replyBody(rl), { lead: rl }), []);
+  assert.deepEqual(validateReplyFinal(buildMessage({ key: 'reply' }, rl, c), c), []);
   const dl = lead({ demoLink: 'https://d.example/x' });
   assert.deepEqual(validateDraft('demo', buildMessage({ key: 'demo' }, dl, c).replace(dl.demoLink, '[[LINK]]'), { lead: dl }), []);
 });
@@ -301,8 +363,7 @@ test('first-message template is 35-90 words for every problem with a hook of up 
 test('email subjects say "free demo", never "free website"', () => {
   assert.equal(emailSubject({ key: 'pitch' }, lead()), 'A free demo for Bounce Co');
   assert.equal(emailSubject({ key: 'fu1' }, lead()), 'Re: A free demo for Bounce Co');
-  assert.equal(REPLY_ENDING, "You'll have it shortly.");
-  assert.equal(DEMO_CLOSING, "If you'd like to know how it works and what it costs, just ask.");
+  assert.equal(DEMO_CLOSING, 'Which rental should be first on the page?');
 });
 
 test('hook helpers: 12-word limit and generic praise words', () => {
@@ -370,4 +431,47 @@ test('the login field does not trigger the browser saved-password dropdown', () 
   const login = fs.readFileSync(new URL('../client/src/components/Login.jsx', import.meta.url), 'utf8');
   assert.match(login, /autoComplete="new-password"/);
   assert.doesNotMatch(login, /current-password/);
+});
+
+test('yes-reply price line: Config amounts only, founding offer follows Config, ends with the top-3 question', () => {
+  const l = lead({ owner: 'Sam' });
+  for (const c of [cfg, parseConfig({ ...CONFIG_DEFAULTS, foundingOffer: 'true' }), parseConfig({ ...CONFIG_DEFAULTS, plan1Price: '75', plan1Founding: '' , foundingOffer: 'true' })]) {
+    const msg = buildMessage({ key: 'reply' }, l, c);
+    const allowed = allowedAmounts(c);
+    assert.ok(amountsIn(msg).length > 0);
+    assert.ok(amountsIn(msg).every((n) => allowed.has(n)), `${amountsIn(msg)} not all in Config`);
+    assert.ok(msg.includes(`plans start at ${startsAt(c)} (3-month minimum, then cancel anytime).`));
+    assert.ok(msg.indexOf('Quick heads-up') < msg.indexOf('top 3 rentals?'));
+    assert.ok(msg.endsWith('?'));
+  }
+  assert.equal(startsAt(cfg), '$59/month');
+  assert.equal(startsAt({ ...cfg, foundingOffer: 'true' }), '$39/month for the first year ($59/month after)');
+  assert.equal(startsAt({ ...cfg, plan1Price: '75', plan1Founding: '', foundingOffer: 'true' }), '$75/month', 'no founding price: regular price');
+});
+
+test('"What\'s the catch?" and "Go live": exact wording, Config prices, siteUrl only when set', () => {
+  const by = (c) => Object.fromEntries(quickReplies(c).map((x) => [x.title, x.text]));
+  assert.equal(by(cfg)["What's the catch?"], "Fair question! The catch is simple: building the site is free, and if you want to keep it live, it's a monthly plan starting at $59/month (3-month minimum, then cancel anytime). If you don't like the demo, you pay nothing. Your domain, photos and text always stay yours.");
+  assert.equal(by(cfg)['Go live'], [
+    'So glad you like it! To go live, just 3 things:',
+    '1. Pick a plan: Get Found $59, Get Booked $99, or Get Paid $179/month',
+    '2. Your OK on the photos and text',
+    '3. Your domain, or I can help you pick one (it stays in your name)',
+    'Which plan feels right?',
+  ].join('\n'));
+  assert.doesNotMatch(by(cfg)['Go live'], /details|undefined|\{|\[/, 'empty siteUrl: no placeholder');
+  const withUrl = by({ ...cfg, siteUrl: 'https://hopbook.example/plans' })['Go live'];
+  assert.match(withUrl, /Get Paid \$179\/month \(details: https:\/\/hopbook\.example\/plans\)\n2\./);
+  assert.doesNotMatch(by({ ...cfg, siteUrl: 'not a link' })['Go live'], /details/);
+  const founding = goLiveReply({ ...cfg, foundingOffer: 'true' });
+  assert.match(founding, /Get Found \$39, Get Booked \$69, or Get Paid \$129\/month for the first year \(then \$59, \$99 or \$179\/month\)/);
+  const renamed = { ...cfg, plan1Name: 'Starter', plan1Price: '45', plan2Name: 'Pro', plan2Price: '80', plan3Name: 'Max', plan3Price: '150' };
+  assert.match(goLiveReply(renamed), /Starter \$45, Pro \$80, or Max \$150\/month/);
+  for (const c of [cfg, { ...cfg, foundingOffer: 'true' }, renamed]) {
+    const allowed = allowedAmounts(c);
+    for (const t of [goLiveReply(c), by(c)["What's the catch?"]]) {
+      assert.ok(amountsIn(t).every((n) => allowed.has(n)), t);
+      assert.equal(hasDeliveryPromise(t), false, t);
+    }
+  }
 });

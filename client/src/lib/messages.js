@@ -1,7 +1,9 @@
 // All outgoing copy lives here. Honesty rules:
 //  - never claim a site is already built (the pitch offers to build a demo after a yes)
 //  - never hide that this is a small remote studio (quick reply says Pakistan plainly)
-//  - no link, no price and no delivery-time promise in any DM
+//  - no link, no price and no delivery-time promise in any pre-demo DM
+//  - the demo is a booking REQUEST form: the owner approves every request, nothing is booked without them
+//  - the only prices are the ones in Config (the yes-reply price line and the pricing quick replies)
 
 export const PROBLEMS = {
   outdated: 'Outdated site',
@@ -35,7 +37,7 @@ export const money = (v) => {
 // ---- plans (names and prices come only from Config; the website build is free) --------------
 
 /** Bump this whenever the system prompt or the offline templates change in a way that makes old drafts stale. */
-export const PROMPT_VERSION = 2;
+export const PROMPT_VERSION = 3;
 
 export const RECOMMENDED_PLAN = 2;
 
@@ -60,6 +62,36 @@ export function plans(config) {
 export function planPrice(p, config) {
   const regular = `${money(p.price)}/month`;
   return foundingOn(config) && p.founding ? `${money(p.founding)}/month for the first year, then ${regular}` : regular;
+}
+
+/** "Plans start at" price: the founding price while the offer is on, else plan 1's monthly price. */
+export function startsAt(config) {
+  const first = plans(config)[0];
+  return foundingOn(config) && first.founding
+    ? `${money(first.founding)}/month for the first year (${money(first.price)}/month after)`
+    : `${money(first.price)}/month`;
+}
+
+/**
+ * Fixed line added to the yes-reply (after they say yes, before the demo). Built from Config only, never written
+ * by the model, so the amount is always one of allowedAmounts(config).
+ */
+export const priceLine = (config) =>
+  `Quick heads-up so there are no surprises: the demo is free, and if you decide to keep the site, plans start at ${startsAt(config)} (3-month minimum, then cancel anytime).`;
+
+/**
+ * Puts `line` in front of the closing question of `text` (its last sentence), so the message still ends with a
+ * question. When the text does not end with a question the line goes at the end.
+ */
+export function insertBeforeQuestion(text, line) {
+  const t = String(text).trim();
+  if (!/\?\s*\p{Extended_Pictographic}?\s*$/u.test(t)) return `${t} ${line}`;
+  // start of the last sentence: just after the last ., ! or ? (plus closing quotes) that is followed by a space
+  let cut = 0;
+  for (const m of t.matchAll(/[.!?…]["”')]?\s+/g)) {
+    if (m.index + m[0].length < t.length) cut = m.index + m[0].length;
+  }
+  return cut === 0 ? `${line} ${t}` : `${t.slice(0, cut).trimEnd()} ${line} ${t.slice(cut)}`;
 }
 
 /** Every dollar amount a pricing reply may legitimately contain. */
@@ -93,16 +125,16 @@ const greeting = (lead) => {
 const problemSentence = (lead) => {
   switch (lead.problem) {
     case 'down':
-      return `I tried opening ${domainOf(lead.site)} and it wasn't loading for me, so anyone clicking from Facebook or Google hits a dead end and may book someone else.`;
+      return `I tried opening ${domainOf(lead.site)} and it wasn't loading, so parents clicking from Facebook or Google hit a dead end and may book someone else.`;
     case 'parked':
       return "Your website link currently lands on a 'get this domain' page, so anyone clicking it hits a dead end instead of your rentals.";
     case 'nosite':
-      return "I noticed you don't have a website yet, so people searching on Google can't find you, and customers have to message you to see items or ask about dates.";
+      return "I noticed you don't have a website yet, so parents searching on Google can't find you or browse your rentals.";
     case 'social':
-      return "Your regular posts look great, but without a website they disappear from the feed after a day or two, and customers can't see your full lineup or check dates in one place.";
+      return "Your posts look great, but without a website they slide down the feed, and parents can't see your full lineup in one place.";
     case 'outdated':
     default:
-      return "I took a look at your website and it feels a bit dated, and customers can't check dates or book online, so they probably end up messaging you for every inquiry.";
+      return 'I took a look at your website on my phone and it could be easier for parents to browse your rentals.';
   }
 };
 
@@ -111,34 +143,52 @@ const hookLine = (lead) => {
   return hook ? `I came across ${lead.name} and noticed ${hook}.` : `I came across ${lead.name} and like what you offer.`;
 };
 
+export const APPROVAL_LINE = 'Nothing gets booked without you, you approve every request.';
+
 const pitchTail = () =>
-  "I run a small web design studio and I'd be glad to build you a free demo of a modern site with a gallery and a booking request form. No obligation. Want me to put one together?";
+  `I run a small web design studio and could build you a free demo of a simple site where parents can see your rentals and send a booking request. ${APPROVAL_LINE} No obligation. Want me to put one together?`;
 
-export const REPLY_ENDING = "You'll have it shortly.";
-export const DEMO_CLOSING = "If you'd like to know how it works and what it costs, just ask.";
+/** The demo message always ends with this question. */
+export const DEMO_CLOSING = 'Which rental should be first on the page?';
+export const DEMO_SAMPLE_LINE = 'Only you have this link. Photos and info are samples for now.';
+export const demoVideoLine = (url) => `Here's a quick video of how a customer would send you a request: ${url}`;
 
-// config is accepted for call-site compatibility; the offline templates no longer read it (no prices, no timing).
-export function buildMessage(stage, lead) {
+/** The model's part of the yes-reply (no price). withPriceLine() adds the price line from Config. */
+export const replyBody = (lead) =>
+  `${greeting(lead)} Thanks so much for getting back to me! I'll only use photos from your page with your OK, and nothing goes live without your approval. To make the demo feel like ${lead.name}, what are your top 3 rentals?`;
+
+/** The yes-reply as sent: the price line from Config goes right before the closing question. */
+export const withPriceLine = (text, config) => insertBeforeQuestion(text, priceLine(config));
+
+// config feeds the yes-reply price line; every other template ignores it (no prices, no timing).
+export function buildMessage(stage, lead, config = {}) {
   const hi = greeting(lead);
   switch (stage.key) {
     case 'pitch':
       return `${hi}\n\n${hookLine(lead)} ${problemSentence(lead)}\n\n${pitchTail()}`;
     case 'fu1':
-      return `${hi} Just bringing my message back up in case it got buried. I'm still happy to build a free demo for ${lead.name}, no pressure at all. Want me to put one together?`;
+      return `${hi} Just bumping this in case it got buried. I'm still happy to make a free demo for ${lead.name}, no pressure at all. Want me to put one together?`;
     case 'fu2':
-      return `${hi} One more reason I reached out: with a booking request form, customers can send their date and item without messaging you first, so your DMs stay for real conversations. The free demo for ${lead.name} is still on offer. Would you like to see it?`;
+      return `${hi} One more thought: many parents search Google before they message anyone. A simple site with your rentals and a request form helps them find ${lead.name} and send their date and item, and you still approve every request. Want to see a free demo?`;
     case 'fu3':
       return `${hi} I won't keep filling your inbox, so this is my last note. If a website ever becomes useful for ${lead.name}, you know where to find me. Wishing you a great season!`;
     case 'reply':
-      return `${hi} Thanks so much for getting back to me! To make the demo feel like ${lead.name}, would it be okay if I use a few photos from your page in a private demo? Only you would see it, and I'll remove any photo you'd rather I didn't use. If you prefer, you can also send me a few of your favorites directly. ${REPLY_ENDING}`;
-    case 'demo':
-      return `${hi} Thanks again for the go-ahead! Here's the private demo I built for ${lead.name}: ${String(lead.demoLink || '').trim()}\n\nOnly you have this link, and nothing is public. The calendar and the form in this version are for show, so you can see the layout. Tell me what to change: colors, wording, items, prices or photos.\n\n${DEMO_CLOSING}`;
+      return withPriceLine(replyBody(lead), config);
+    case 'demo': {
+      const video = String(lead.demoVideo || '').trim();
+      return [
+        `${hi} Thanks again for the go-ahead! Here's the demo for ${lead.name}: ${String(lead.demoLink || '').trim()}`,
+        DEMO_SAMPLE_LINE,
+        video && demoVideoLine(video),
+        DEMO_CLOSING,
+      ].filter(Boolean).join('\n\n');
+    }
     case 'nudge1':
-      return `${hi} Quick check: did the demo link open okay on your phone? Happy to change anything you spot.`;
+      return `${hi} Did the demo open okay on your phone? Tell me which rental people ask about most and I'll put it first.`;
     case 'nudge2':
-      return `${hi} Is there anything that would make you say yes to the demo? I can swap photos, change items or prices, and remove any photo you'd rather not have in it.`;
+      return `${hi} Anything you'd change? I can swap photos, items, prices or colors, whatever makes it feel like yours.`;
     case 'nudge3':
-      return `${hi} Last note from me on the demo. I'll keep it available a few more days, and if you'd like it live, just reply "go live". If not, no hard feelings.`;
+      return `${hi} No pressure at all. Should I keep your demo saved for spring, or close it out? Either answer is fine.`;
     default:
       return '';
   }
@@ -219,7 +269,10 @@ export function applySend(lead, st, account, nowIso) {
     case 'nudge1': case 'nudge2': case 'nudge3':
       return { ...patch, step: next, status: next >= 4 ? 'done' : 'active' };
     case 'demo':
-      return { ...patch, track: 'demo', step: 1, status: 'active', demoLink: String(lead.demoLink).trim() };
+      return {
+        ...patch, track: 'demo', step: 1, status: 'active', demoLink: String(lead.demoLink).trim(),
+        ...(lead.demoVideo ? { demoVideo: String(lead.demoVideo).trim() } : {}),
+      };
     case 'reply':
     default:
       return patch;
@@ -241,26 +294,50 @@ export function recommendReply(config, n = RECOMMENDED_PLAN) {
   return `Thanks! From what you've told me, I'd suggest ${pick.name} at ${planPrice(pick, config)}. ${pick.note}\n\n${TERMS_LINE}${also.length ? `\n\nFor comparison: ${also.join(', and ')}.` : ''}`;
 }
 
+/** Plans page link from Config (siteUrl), or '' when it is empty or not an http(s) link. */
+export const siteUrlOf = (config) => (hasLink(config.siteUrl) ? String(config.siteUrl).trim() : '');
+
+/**
+ * "Go live": the three plans with their Config prices, then what you need from them. With the founding offer on,
+ * the first-year prices are listed and the regular prices follow, so every amount still comes from Config.
+ */
+export function goLiveReply(config) {
+  const [p1, p2, p3] = plans(config);
+  const founding = foundingOn(config) && [p1, p2, p3].every((p) => p.founding);
+  const price = (p) => money(founding ? p.founding : p.price);
+  const after = founding ? ` for the first year (then ${money(p1.price)}, ${money(p2.price)} or ${money(p3.price)}/month)` : '';
+  const url = siteUrlOf(config);
+  return [
+    'So glad you like it! To go live, just 3 things:',
+    `1. Pick a plan: ${p1.name} ${price(p1)}, ${p2.name} ${price(p2)}, or ${p3.name} ${price(p3)}/month${after}${url ? ` (details: ${url})` : ''}`,
+    '2. Your OK on the photos and text',
+    '3. Your domain, or I can help you pick one (it stays in your name)',
+    'Which plan feels right?',
+  ].join('\n');
+}
+
 export function quickReplies(config) {
   const studio = String(config.studio || '').trim();
   const studioName = studio ? ` (${studio})` : '';
   const all = plans(config);
   const first = all[0];
-  const startsAt = foundingOn(config) && first.founding
-    ? `${money(first.founding)}/month for the first year (${money(first.price)}/month after)`
-    : `${money(first.price)}/month`;
+  const from = startsAt(config);
   return [
     {
       title: 'How much?',
       parts: [
         { label: 'Step 1 · Ask first', text: "Happy to help with that! So I can point you to the right option, roughly how many items do you rent out, and how do bookings come in right now (DMs, calls, texts)?" },
         { label: 'Step 2 · Recommend a plan', plan: true, text: recommendReply(config) },
-        { label: 'If they ask the price before the demo', text: `Plans start at ${startsAt} and the website build is free. The demo is free and you pay nothing unless you want it live.` },
+        { label: 'If they ask the price before the demo', text: `Plans start at ${from} and the website build is free. The demo is free and you pay nothing unless you want it live.` },
       ],
     },
     {
       title: 'Is it really free?',
-      text: `The demo is free and there's no obligation. The website build is free too. You only pay the monthly plan if you decide to go live, and plans start at ${startsAt} with a 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you.`,
+      text: `The demo is free and there's no obligation. The website build is free too. You only pay the monthly plan if you decide to go live, and plans start at ${from} with a 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you.`,
+    },
+    {
+      title: "What's the catch?",
+      text: `Fair question! The catch is simple: building the site is free, and if you want to keep it live, it's a monthly plan starting at ${from} (3-month minimum, then cancel anytime). If you don't like the demo, you pay nothing. Your domain, photos and text always stay yours.`,
     },
     {
       title: 'What do you need from me?',
@@ -285,6 +362,10 @@ export function quickReplies(config) {
     {
       title: "I'll think about it",
       text: "Of course, no rush! The demo is free and you pay nothing unless you want it live, so there's nothing to decide yet. If there's anything you'd want changed, tell me and I'll adjust it.",
+    },
+    {
+      title: 'Go live',
+      text: goLiveReply(config),
     },
     {
       title: 'How do reviews work?',
