@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PROBLEMS } from '../lib/messages.js';
+import { missingTracking, PROBLEMS } from '../lib/messages.js';
 import { pipelineStats } from '../lib/schedule.js';
 import { I, Icon } from './icons.jsx';
 import LeadCard from './LeadCard.jsx';
@@ -73,6 +73,11 @@ export default function LeadsTab({ leads, env, onAdd, onImport }) {
                     <span className="ct">{[lead.city, lead.owner].filter(Boolean).join(' · ') || 'No city yet'}</span>
                   </div>
                   <div className="badges">
+                    {missingTracking(lead).length > 0 && (
+                      <span className="tag tag-warn" title="Add the city and the source so Stats can compare them.">
+                        <Icon as={I.Warning} size="sm" /> No {missingTracking(lead).join(' or ')}
+                      </span>
+                    )}
                     <span className={`tag tag-${lead.problem}`}>{PROBLEMS[lead.problem]}</span>
                     {lead.account && <span className={`acct ${lead.account === 'B' ? 'acct-B' : ''}`}><span aria-hidden="true">{lead.account}</span><span className="sr-only">Account {lead.account}</span></span>}
                     <span className={`tag ${lead.status === 'won' ? 'tag-ok' : lead.status === 'lost' ? 'tag-bad' : lead.status === 'replied' ? 'tag-info' : ''}`}>{lead.status}{lead.step ? ` ${lead.step}/4` : ''}</span>

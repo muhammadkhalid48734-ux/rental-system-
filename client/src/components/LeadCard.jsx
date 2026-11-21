@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { copyText } from '../lib/clipboard.js';
 import { EMPTY, genCache } from '../lib/genCache.js';
 import { cacheKey, errorMessage, goTo, isOldWording, requestVariant, stashEdit, view } from '../lib/gen.js';
-import { buildMessage, getStage, HOOK_MAX_WORDS, hasLink, hasPlaceholder, hookWordCount, PROBLEMS, toEmailText } from '../lib/messages.js';
+import {
+  buildMessage, getStage, HOOK_MAX_WORDS, hasLink, hasPlaceholder, hookWordCount, missingTracking, PROBLEMS, SOURCES, toEmailText,
+} from '../lib/messages.js';
 import { dueBadge, HOOK_HELP, HOOK_LABEL, HOOK_PLACEHOLDER, NOTE_HELP, NOTE_LABEL } from '../lib/ui.js';
 import HookHint from './HookHint.jsx';
 import { I, Icon } from './icons.jsx';
@@ -50,12 +52,14 @@ function MoreMenu({ items }) {
   );
 }
 
-/** Problem tag, note and hook (both editable inline, saved on blur), site link, and a nudge when both are empty. */
+/** Problem tag, city, source, note and hook (editable inline, saved on blur), site link, and a nudge when note and hook are empty. */
 function AboutStrip({ lead, actions }) {
   const [hook, setHook] = useState(lead.hook || '');
   const [note, setNote] = useState(lead.note || '');
+  const [city, setCity] = useState(lead.city || '');
   useEffect(() => { setHook(lead.hook || ''); }, [lead.hook]);
   useEffect(() => { setNote(lead.note || ''); }, [lead.note]);
+  useEffect(() => { setCity(lead.city || ''); }, [lead.city]);
 
   const save = (field, value) => {
     const v = value.trim();
@@ -78,6 +82,20 @@ function AboutStrip({ lead, actions }) {
         )}
       </div>
       <div className="about-fields">
+        <label className="field">
+          <span className="label">City</span>
+          <input type="text" value={city} maxLength={100} placeholder="e.g. Mesa" onChange={(e) => setCity(e.target.value)} onBlur={() => save('city', city)} />
+        </label>
+        <label className="field">
+          <span className="label">Source (where you found them)</span>
+          <select
+            value={lead.source || ''}
+            onChange={(e) => actions.patch(lead.id, { source: e.target.value }, undefined, { quiet: true })}
+          >
+            <option value="">Not set</option>
+            {Object.entries(SOURCES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </label>
         <label className="field">
           <span className="label">{NOTE_LABEL}</span>
           <textarea
@@ -127,7 +145,12 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   // The demo link is typed into the card; the message switches as soon as a valid link is present.
   const [linkDraft, setLinkDraft] = useState(lead.demoLink || '');
   useEffect(() => { setLinkDraft(lead.demoLink || ''); }, [lead.demoLink]);
-  const eff = lead.status === 'replied' ? { ...lead, demoLink: linkDraft.trim() } : lead;
+  // Optional short screen recording; its line is added to the demo message (by the server for AI drafts).
+  const [videoDraft, setVideoDraft] = useState(lead.demoVideo || '');
+  useEffect(() => { setVideoDraft(lead.demoVideo || ''); }, [lead.demoVideo]);
+  const eff = lead.status === 'replied'
+    ? { ...lead, demoLink: linkDraft.trim(), demoVideo: hasLink(videoDraft) ? videoDraft.trim() : '' }
+    : lead;
 
   // Optimistic copy of the "confirmed" checkbox; reset to the Sheet's value after every reload.
   const [verified, setVerified] = useState(lead.verified);
@@ -135,6 +158,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
 
   const stage = getStage(eff);
   const showMessage = !!stage && stage.sendable;
+  const isDemoStage = ['demo', 'nudge1', 'nudge2', 'nudge3'].includes(stage?.key);
   const due = dueBadge(lead, cfg);
 
   const isNew = stage?.isNew;
@@ -204,7 +228,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
   const needAuto = !!(
     showMessage && env.llm.configured && gkey && entry.draft === null
     && !entry.versions.some((x) => x.source === 'personalized')
-    && !(stage?.key === 'demo' && lead.demoLink !== eff.demoLink)
+    && !(stage?.key === 'demo' && (lead.demoLink !== eff.demoLink || (lead.demoVideo || '') !== eff.demoVideo))
   );
   useEffect(() => {
     if (!needAuto) return undefined;
@@ -257,7 +281,7 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
       actions.toast(blocked, { kind: 'warn', ms: 5000 });
       return;
     }
-    actions.send(lead, stage, account, ch, eff.demoLink, text);
+    actions.send(lead, stage, account, ch, eff.demoLink, text, eff.demoVideo);
   };
 
   const copy = () => {
@@ -319,6 +343,15 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
     }
     actions.patch(lead.id, { demoLink: link }, undefined, { quiet: true });
   };
+  const saveVideo = () => {
+    const link = videoDraft.trim();
+    if (link === (lead.demoVideo || '')) return;
+    if (link && !hasLink(link)) {
+      actions.toast('The video link must start with http:// or https://', { kind: 'warn' });
+      return;
+    }
+    actions.patch(lead.id, { demoVideo: link }, undefined, { quiet: true });
+  };
 
   const menuItems = [];
   if (!['replied', 'won'].includes(lead.status)) {
@@ -357,6 +390,11 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
           {(lead.account || isNew) && <span className={`tag tag-${account}`}>{account}{accName ? ` · ${accName}` : ''}</span>}
           {due && <span className={`tag ${due.tone === 'bad' ? 'tag-bad' : due.tone === 'warn' ? 'tag-warn' : ''}`}>{due.text}</span>}
           {needsCheck && !verified && <span className="tag tag-warn"><Icon as={I.Warning} size="sm" /> Unverified</span>}
+          {missingTracking(lead).length > 0 && (
+            <span className="tag tag-warn" title="Add the city and the source so Stats can compare them.">
+              <Icon as={I.Warning} size="sm" /> No {missingTracking(lead).join(' or ')}
+            </span>
+          )}
           {lead.status === 'replied' && <span className="tag tag-info">Replied</span>}
         </div>
       </header>
@@ -395,11 +433,25 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
           />
         </label>
       )}
+      {lead.status === 'replied' && (
+        <label className="field">
+          <span className="label">Demo video (optional: a short screen recording of a customer sending a request)</span>
+          <input
+            type="url"
+            inputMode="url"
+            placeholder="https://"
+            value={videoDraft}
+            onChange={(e) => setVideoDraft(e.target.value)}
+            onBlur={saveVideo}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+          />
+        </label>
+      )}
 
       {stage?.key === 'replyWait' && (
         <div className="notice" role="note">
           <Icon as={I.Info} />
-          <div>Photo-permission message sent. Once they agree, build the private demo and paste its link above to get the delivery message.</div>
+          <div>Yes-reply sent. Once they send their top 3 rentals, build the demo and paste its link above to get the delivery message.</div>
         </div>
       )}
 
@@ -530,10 +582,13 @@ export default function LeadCard({ lead, env, defaultAccount, active = false }) 
               <button className={flashKey === 'copy' ? 'btn btn-flash' : cls('copy')} aria-disabled={awaitingAI || undefined} onClick={copy}>
                 <Icon as={flashKey === 'copy' ? I.Check : I.CopySimple} /> {flashKey === 'copy' ? 'Copied' : 'Copy'}
               </button>
-              <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} aria-disabled={awaitingAI || undefined} onClick={copyEmail}>
-                <Icon as={flashKey === 'email' ? I.Check : I.EnvelopeSimple} /> {flashKey === 'email' ? 'Copied' : 'Copy as email'}
-              </button>
+              {(!isDemoStage || lead.email) && (
+                <button className={flashKey === 'email' ? 'btn btn-flash' : 'btn btn-secondary'} aria-disabled={awaitingAI || undefined} onClick={copyEmail}>
+                  <Icon as={flashKey === 'email' ? I.Check : I.EnvelopeSimple} /> {flashKey === 'email' ? 'Copied' : 'Copy as email'}
+                </button>
+              )}
             </div>
+            {isDemoStage && <p className="hint">Send demos in DM when you can; owners check Messenger more than email.</p>}
             {lead.email && <p className="hint">Email: <span className="num">{lead.email}</span></p>}
             <p className="hint">
               {copied

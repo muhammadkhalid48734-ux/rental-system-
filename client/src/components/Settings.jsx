@@ -21,6 +21,7 @@ const GROUPS = [
       ['yourName', 'Your name', 'text', ''],
       ['studio', 'Studio name', 'text', ''],
       ['address', 'Postal address', 'text', 'Street, city, country', true],
+      ['siteUrl', 'Plans page link (Hopbook), shown in the "Go live" reply', 'url', 'https://', true],
     ],
   },
 ];

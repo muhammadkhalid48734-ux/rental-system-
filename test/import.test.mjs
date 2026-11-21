@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { cellText, parsePaste, resolveProgress } from '../client/src/lib/importer.js';
 import { addDays, dayToIso, parseDay, ymd } from '../client/src/lib/dates.js';
 import { buildToday, netSends, nextAction, parseConfig, pipelineStats, weekStats } from '../client/src/lib/schedule.js';
@@ -201,7 +202,7 @@ test('the due date is the same calendar day in every timezone', () => {
     console.log(JSON.stringify({ errors: r.errors, storedDay: ymd(new Date(r.progress.lastSentAt)), day, overdueDays: n.overdueDays }));
   `;
   for (const TZ of ['UTC', 'Asia/Karachi', 'America/Los_Angeles', 'Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
-    const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ }, encoding: 'utf8', cwd: new URL('..', import.meta.url).pathname }));
+    const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ }, encoding: 'utf8', cwd: fileURLToPath(new URL('..', import.meta.url)) }));
     assert.deepEqual(out.errors, [], TZ);
     assert.equal(out.storedDay, out.day, `${TZ}: stored day`);
     assert.equal(out.overdueDays, 0, `${TZ}: step 2 sent 3 days ago is due today (gap 3)`);
@@ -210,7 +211,11 @@ test('the due date is the same calendar day in every timezone', () => {
 
 // ------------------------------------------------------------------ API: Log backfill
 
+// The API tests run "on" NOW: the server's 14-day log window and future-date checks read Date.now(), so pin it
+// to NOW while a test server is open. Otherwise these tests start failing once the real date passes NOW + 14 days.
 async function setup() {
+  const realNow = Date.now;
+  Date.now = () => NOW.getTime();
   const store = memoryStore();
   await store.init();
   const server = http.createServer(createApp({ store, env: {} }));
@@ -220,7 +225,7 @@ async function setup() {
     const res = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json' }, body: body !== undefined ? JSON.stringify(body) : undefined });
     return { status: res.status, json: await res.json().catch(() => ({})) };
   };
-  return { store, call, close: () => new Promise((r) => server.close(r)) };
+  return { store, call, close: () => new Promise((r) => server.close(r)).finally(() => { Date.now = realNow; }) };
 }
 
 // What the import dialog sends for a validated row.
@@ -356,7 +361,7 @@ test('imported log rows never count toward today\'s meters, sent list, progress 
     assert.deepEqual([t.meters.A.used, t.meters.B.used, t.meters.followups.sent], [0, 0, 0]);
     assert.equal(t.sentToday.length, 0);
     assert.equal(t.progress.sent, 0);
-    assert.deepEqual(t.remaining, { A: 10, B: 10 }, 'the full daily allowance is still open');
+    assert.deepEqual(t.remaining, { A: 10, B: 10, C: 10 },'the full daily allowance is still open');
     assert.equal(t.newDMs.length, 12);
     assert.deepEqual(weekStats(leads, log, NOW), { streak: 0, sent: 0, replies: 0, won: 0 });
 
@@ -393,4 +398,49 @@ test('"Contacted" counts imported leads (from the lead fields, which the import 
     assert.equal(stats.replied, 1);
     assert.equal(stats.rate, 33);
   } finally { await close(); }
+});
+
+// ------------------------------------------------------------------ city and source (tracking)
+
+test('import: city and source as columns 11 and 12, or by header name anywhere; unknown sources become "other"', async () => {
+  const { normSource } = await import('../client/src/lib/importer.js');
+  const positional = parsePaste('Fun Jumps\t\t\t\t\t\t\t\t\t\tMesa\tGoogle Maps\textra hi@fun.example', []);
+  assert.deepEqual([positional.rows[0].city, positional.rows[0].source, positional.rows[0].email], ['Mesa', 'maps', 'hi@fun.example']);
+  assert.equal(positional.rows[0].raw, null, 'no progress columns: still a plain new lead');
+
+  const byHeader = parsePaste([
+    'business\tcity\twebsite\tinstagram\tfacebook\tnote\temail\tSource',
+    'Castle Kings\tTempe\t\t\t\t\t\tfb groups',
+  ].join('\n'), []);
+  // with a header row, the named columns are read wherever they are
+  assert.equal(byHeader.rows[0].city, 'Tempe');
+  assert.equal(byHeader.rows[0].source, 'groups');
+
+  assert.equal(parsePaste('Old Six Col\t\t\t\tnote\t', []).rows[0].city, '', 'old pastes: empty city and source');
+  assert.equal(parsePaste('Old Six Col\t\t\t\tnote\t', []).rows[0].source, '');
+  for (const [v, want] of [['Instagram', 'instagram'], ['IG', 'instagram'], ['ads', 'ads'], ['Marketplace', 'marketplace'], ['a friend', 'other'], ['', ''], ['n/a', '']]) {
+    assert.equal(normSource(v), want, v);
+  }
+});
+
+test('API: source is validated, saved, and a lead without city or source still works', async () => {
+  const { call, close } = await setup();
+  try {
+    const r = await call('POST', '/api/leads', { leads: [{ name: 'With Src', city: 'Mesa', source: 'Maps' }, { name: 'No Src' }] });
+    assert.equal(r.status, 200);
+    const [a, b] = r.json.created;
+    assert.deepEqual([a.city, a.source], ['Mesa', 'maps']);
+    assert.deepEqual([b.city, b.source], ['', '']);
+    assert.equal((await call('POST', '/api/leads', { leads: [{ name: 'Bad Src', source: 'tiktok' }] })).status, 400);
+    const p = await call('PATCH', `/api/leads?id=${b.id}`, { source: 'groups', city: 'Tempe' });
+    assert.deepEqual([p.json.lead.source, p.json.lead.city], ['groups', 'Tempe']);
+  } finally { await close(); }
+});
+
+test('missingTracking flags an empty city or source for the warning badge', async () => {
+  const { missingTracking } = await import('../client/src/lib/messages.js');
+  assert.deepEqual(missingTracking({ city: '', source: '' }), ['city', 'source']);
+  assert.deepEqual(missingTracking({ city: 'Mesa', source: '' }), ['source']);
+  assert.deepEqual(missingTracking({ city: ' ', source: 'maps' }), ['city']);
+  assert.deepEqual(missingTracking({ city: 'Mesa', source: 'maps' }), []);
 });

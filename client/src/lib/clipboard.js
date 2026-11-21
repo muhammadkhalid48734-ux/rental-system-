@@ -21,7 +21,7 @@ export function copyText(text) {
 
 const CSV_COLS = [
   'id', 'name', 'city', 'owner', 'fb', 'ig', 'email', 'site', 'problem', 'hook', 'note',
-  'status', 'track', 'step', 'account', 'lastSentAt', 'repliedAt', 'demoLink', 'verified', 'order',
+  'status', 'track', 'step', 'account', 'lastSentAt', 'repliedAt', 'demoLink', 'verified', 'order', 'demoVideo', 'source',
 ];
 
 export function leadsToCsv(leads) {

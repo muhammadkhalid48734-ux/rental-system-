@@ -19,6 +19,19 @@ const configRows = () => Object.entries(CONFIG_DEFAULTS);
 const pad = (row, n) => Array.from({ length: n }, (_, i) => row[i] ?? '');
 
 /**
+ * Columns are mapped by position, and new columns are only ever added at the end. A Sheet created before a new
+ * column keeps working as is: its rows are padded, so the missing cells read as empty. This returns the header row
+ * to write when the existing one is an older, shorter version of `expected` (an exact prefix), so the new columns get
+ * their names; otherwise null (already current, empty, or changed by hand, which is never overwritten).
+ */
+export function headerUpgrade(existing, expected) {
+  const cur = (existing ?? []).map((c) => String(c ?? '').trim());
+  while (cur.length && !cur[cur.length - 1]) cur.pop();
+  if (!cur.length || cur.length >= expected.length) return null;
+  return cur.every((c, i) => c === expected[i]) ? [...expected] : null;
+}
+
+/**
  * Store interface (rows are arrays of strings, header excluded):
  *   init(), getRows(tab), appendRows(tab, rows), updateRow(tab, i, row), deleteRow(tab, i), replaceAll(tab, rows)
  */
@@ -69,9 +82,11 @@ export function googleStore({ spreadsheetId, serviceAccount }) {
     }
     for (const [tab, header] of Object.entries(TABS)) {
       const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${tab}!A1:${last(tab)}1` });
-      if (!res.data.values?.[0]?.length) {
+      const current = res.data.values?.[0];
+      const write = !current?.length ? header : headerUpgrade(current, header);
+      if (write) {
         await sheets.spreadsheets.values.update({
-          spreadsheetId, range: `${tab}!A1`, valueInputOption: 'RAW', requestBody: { values: [header] },
+          spreadsheetId, range: `${tab}!A1`, valueInputOption: 'RAW', requestBody: { values: [write] },
         });
       }
     }

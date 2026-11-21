@@ -9,9 +9,12 @@ export const KIND_BY_STAGE = {
 
 const MAX_VERSIONS = 12;
 
-/** Cache key: lead + message step (the demo message also depends on the link it contains). */
-export const cacheKey = (lead, stage) =>
-  `${lead.id}:${stage.key}${stage.key === 'demo' ? `:${String(lead.demoLink || '').trim()}` : ''}`;
+/** Cache key: lead + message step (the demo message also depends on the link and the video link it contains). */
+export function cacheKey(lead, stage) {
+  if (stage.key !== 'demo') return `${lead.id}:${stage.key}`;
+  const video = String(lead.demoVideo || '').trim();
+  return `${lead.id}:demo:${String(lead.demoLink || '').trim()}${video ? `|${video}` : ''}`;
+}
 
 /**
  * What the card shows. `all[0]` is always the offline template (rebuilt from current data, never stored);
@@ -92,7 +95,7 @@ export function errorMessage(err) {
     case 'bad_key':
       return 'The AI provider rejected the API key. Check the Groq key on the server.';
     case 'provider_down':
-      return `${err.message || 'The AI provider is not responding. Try again shortly.'}${why}`;
+      return `${err.message || 'The AI provider is not responding. Try again in a minute.'}${why}`;
     default:
       return `${err.message || 'Could not generate a message.'}${why}`;
   }

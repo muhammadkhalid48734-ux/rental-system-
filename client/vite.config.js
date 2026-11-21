@@ -8,6 +8,8 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
-    proxy: { '/api': 'http://127.0.0.1:3001' },
+    // Keep the browser's Host header: the API blocks writes whose Origin host differs from Host, and a rewritten
+    // Host (the proxy target) made every local write fail with "Cross-origin request blocked".
+    proxy: { '/api': { target: 'http://127.0.0.1:3001', changeOrigin: false } },
   },
 });

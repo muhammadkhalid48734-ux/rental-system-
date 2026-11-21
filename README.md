@@ -102,7 +102,7 @@ Before any `git push` or deploy, check `git status` and make sure no `.env`, key
 ## Sheet layout
 
 **Leads** (one row per lead)
-`id, name, city, owner, fb, ig, email, site, problem, hook, note, status, track, step, account, lastSentAt, repliedAt, demoLink, verified, order`
+`id, name, city, owner, fb, ig, email, site, problem, hook, note, status, track, step, account, lastSentAt, repliedAt, demoLink, verified, order, demoVideo, source`
 
 | column | values |
 | --- | --- |
@@ -110,19 +110,23 @@ Before any `git push` or deploy, check `git status` and make sure no `.env`, key
 | `status` | `queued` · `active` · `replied` · `won` · `lost` · `done` |
 | `track` | `cold` · `demo` |
 | `step` | messages already sent in the current track (0–4) |
-| `account` | `A` or `B` |
+| `account` | `A`, `B` or `C` |
 | `verified` | `TRUE`/`FALSE`: "I opened it and confirmed the problem" |
 | `order` | import order; decides the default queue order within a priority |
+| `demoVideo` | optional link to a short screen recording; the demo message adds "Here's a quick video…" with it |
+| `source` | where the lead was found: `groups` · `ads` · `marketplace` · `maps` · `instagram` · `other` (empty = not set) |
+
+New columns are only ever added at the end. A Sheet created before them keeps working: missing cells read as empty, and on first use the app adds the new column names to the header row when the existing header is an older, unchanged version (a header you edited by hand is left alone). Leads with an empty `city` or `source` show a warning badge.
 
 **Log**: `timestamp, leadId, account, track, step, channel`. `track` is `cold`, `demo` or `reply`; `step` is the index of the message sent (0 = first of that track); `channel` is `ig`, `fb`, `email` or `undo`; backfilled rows from an import use `imported` (see Import).
 
 **Messages**: `timestamp, leadId, kind, text`. Written when you press **Mark sent**, with the text exactly as you sent it (after your edits). `kind` is `cold`, `followup1-3`, `replyAck`, `demo`, `demoNudge1-3`. **Undo** appends a compensating row (`<kind>:undo`, empty text) instead of deleting anything. These are the "earlier messages" the AI is told not to repeat.
 
-**Config**: `key, value` for `accA, accB, cap, gaps, yourName, studio, address`, the three monthly plans (`planNName`, `planNPrice`, `planNFounding`, `planNNote`) and `foundingOffer`. All editable in Settings. Older rows for fields that no longer exist (`demoTurnaround`, `pkgN…`) stay in the Sheet but are ignored.
+**Config**: `key, value` for `accA, accB, accC, cap, gaps, yourName, studio, address, siteUrl` (the plans page link used in the **Go live** reply; empty = left out), the three monthly plans (`planNName`, `planNPrice`, `planNFounding`, `planNNote`) and `foundingOffer`. All editable in Settings. Older rows for fields that no longer exist (`demoTurnaround`, `pkgN…`) stay in the Sheet but are ignored.
 
 ### Monthly plans
 
-The website build is free. Defaults: **Get Found** $59/month, **Get Booked** $99/month (labelled "Recommended"), **Get Paid** $179/month. The **founding offer** flag (default off, Settings → *Monthly plans*) switches pricing replies to $39 / $69 / $129 for the first year. Each plan's one-line description is editable. The terms line used in pricing replies is fixed: "The website build is free. 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you." Prices appear only in **Quick replies**; first messages, follow-ups and the demo delivery message never contain a price, a link (apart from the demo link itself) or a delivery-time promise.
+The website build is free. Defaults: **Get Found** $59/month, **Get Booked** $99/month (labelled "Recommended"), **Get Paid** $179/month. The **founding offer** flag (default off, Settings → *Monthly plans*) switches pricing replies to $39 / $69 / $129 for the first year. Each plan's one-line description is editable. The terms line used in pricing replies is fixed: "The website build is free. 3-month minimum, then cancel anytime. Your domain, photos and text always belong to you." Prices appear only in **Quick replies** and in one fixed line the server adds to the yes-reply: "Quick heads-up so there are no surprises: the demo is free, and if you decide to keep the site, plans start at {price} (3-month minimum, then cancel anytime)." `{price}` is plan 1's price from Config (the founding price while the offer is on). First messages, follow-ups, the demo delivery message and the nudges never contain a price, and no message contains a delivery-time promise.
 
 ## How the day works
 
@@ -130,7 +134,7 @@ The website build is free. Defaults: **Get Found** $59/month, **Get Booked** $99
 2. On a card, click **Copy + open Instagram** (or Facebook). It copies the textarea and opens the profile. Paste, send it yourself, return, and press **Mark sent**. That button is always an explicit click. **Copy as email** adds a subject and a footer with your name, studio, postal address and an unsubscribe line.
 3. Daily limit: 10 **new** first messages per account (configurable), counted from the Log. Follow-ups and replies you send also add to each account's real volume.
 4. Sequence: pitch → follow-up 1 → 2 → 3 (gaps from Config, default 2/3/4 days), then `done`. A follow-up always comes from the account that sent the first message.
-5. **More → They replied** moves a lead to the top. After they agree to photos, build the demo, paste the link into the card, and the message becomes the demo delivery. Marking it sent starts the demo track (demo, then 3 nudges).
+5. **More → They replied** moves a lead to the top. The yes-reply thanks them, asks for their top 3 rentals and carries the price line. Build the demo, paste the link (and, optionally, a short video link) into the card, and the message becomes the demo delivery, ending with "Which rental should be first on the page?". Marking it sent starts the demo track (demo, then 3 nudges). On demo and nudge stages **Copy as email** only appears when the lead has an email, with a reminder to send demos in DM.
 6. For `down`/`parked` leads, open the site and tick **I opened it and confirmed the problem**; the first message cannot be marked sent until you do, because it says you tried the site.
 
 ### Layout and keyboard
@@ -149,7 +153,7 @@ Fonts (Plus Jakarta Sans, Inter) and icons (Phosphor) are bundled with the app, 
 
 ### Accounts
 
-Every new lead is sent from Account A or B. Choose it in **Add lead** (**Send from account**; leave it on Automatic to use whichever account has room) or on the lead's card (**Send from account**, with each account's name and `sent/limit` count). A lead's follow-ups always stay on the account that sent the first message.
+Every new lead is sent from Account A, B or C. Choose it in **Add lead** (**Send from account**; leave it on Automatic to use whichever account has room) or on the lead's card (**Send from account**, with each account's name and `sent/limit` count). A lead's follow-ups always stay on the account that sent the first message.
 
 ### Personalized messages
 
@@ -158,12 +162,12 @@ With a Groq key set, the personalized message is written automatically the first
 - Optional **Hint** ("shorter", "don't mention phones"). It can change tone or length but never the rules.
 - **Versions ◀ ▶** keep every draft, including your own edits, so nothing is lost. Replacing text you edited needs an in-page confirmation, and your edit is saved as a version first.
 - Badge: **Personalized** or **Template**. If both hook and note are empty you get a reminder: the more specific your note, the more personal the message.
-- **Hook** is one true detail you saw on their page (up to 12 words, e.g. "the blue and yellow castle photos"); it appears in the message as "I came across … and noticed …". Generic praise words ("great", "amazing", "best", "wonderful") get a warning. **Note** is internal: the facts about the problem.
+- **Hook** is one true detail you saw on their page (up to 12 words, e.g. "the blue and yellow castle photos"); it appears in the message as "I came across … and noticed …" (or "and saw …" when the problem sentence already says "I noticed", so "noticed" is never used twice). Generic praise words ("great", "amazing", "best", "wonderful") get a warning. **Note** is internal: the facts about the problem.
 - **Old wording**: drafts carry the prompt version they were written with. After the messaging changes (`PROMPT_VERSION` in `client/src/lib/messages.js`), older drafts show an **Old wording** badge and are skipped by **Generate all**. **Regenerate old wording** (Today) rewrites them one at a time under the same rate limit, adds the new text as a new version, and never touches text you edited.
 - **Generate all for today** goes through the Today cards one at a time with "7 of 20" progress and a Cancel button. It skips cards you edited and cards that already have a personalized draft, pauses to stay under `GROQ_MAX_RPM`, stops cleanly if the provider rate-limits, and leaves the rest as templates.
 - Generated text is cached per lead and step in your browser, so reopening the app does not regenerate.
 
-The server builds every prompt itself from the stored lead, so the browser can only send a lead id, a message kind, an optional hint and earlier drafts. Every draft is checked before it is returned: no link, price or website address (the demo message holds only the demo link); no promise about when or how fast anything arrives ("within the hour", "next morning", "24 hours", "same day", "in 30 minutes", …); no mention of automation, a follow-up system, a reviews system or monthly plans; never "free website" (it is a "free demo"); first messages 35 to 90 words, offering the free demo, saying "No obligation", using the hook and ending with a question; follow-ups 70 or fewer; no markdown; at most one emoji; nothing that implies the site is already built ("I built", "already built", …). The photo-permission reply always ends with "You'll have it shortly." One failed draft is retried with the problem stated; if it fails again you get the offline template. In demo messages the AI writes the text and the server inserts the exact demo link and the closing sentence; there is no price or package list in them.
+The server builds every prompt itself from the stored lead, so the browser can only send a lead id, a message kind, an optional hint and earlier drafts. Every draft is checked before it is returned: no link, price or website address (the demo message holds only the demo link); no promise about when or how fast anything arrives ("within the hour", "next morning", "24 hours", "same day", "in 30 minutes", …); no mention of automation, a follow-up system, a reviews system or monthly plans; never "free website" (it is a "free demo"); first messages 35 to 90 words, offering the free demo, saying "No obligation", using the hook and ending with a question; follow-ups 70 or fewer; no markdown; at most one emoji; nothing that implies the site is already built ("I built", "already built", …). First messages must also say the owner approves every request ("Nothing gets booked without you, you approve every request."), and words like "shortly", "today", "tonight" and "tomorrow" count as timing promises. For the yes-reply the model writes only the thanks and the top-3 question; that text is checked with the same no-price rules, and only then does the server add the price line from Config before the question and check that every amount is one of the Config prices. One failed draft is retried with the problem stated; if it fails again you get the offline template. In demo messages the AI writes the text with a `[[LINK]]` token; the server inserts the exact demo link, the video line when there is one, and the closing question, so the model never types a URL. There is no price or package list in them.
 
 ### Import
 
@@ -175,15 +179,21 @@ Leads tab → **Import**. Paste tab-separated rows (from a sheet). Columns in or
 | 7 | `status` (optional) | `queued`, `active`, `replied`, `won`, `lost`, `done` |
 | 8 | `step` (optional) | `0`-`4`: how many messages were already sent |
 | 9 | `lastSentAt` (optional) | `YYYY-MM-DD`, a real date, not in the future |
-| 10 | `account` (optional) | `A` or `B` |
+| 10 | `account` (optional) | `A`, `B` or `C` |
+| 11 | `city` (optional) | |
+| 12 | `source` (optional) | `groups`, `ads`, `marketplace`, `maps`, `instagram`, `other` ("Google Maps", "IG", "FB groups" and similar are understood; anything else becomes `other`) |
 
-A header row is ignored. A 6-column paste behaves exactly as before: every lead is queued at step 0.
+A header row is skipped; when there is one, `city` and `source` are found by their column name wherever they are. A 6-column paste behaves exactly as before: every lead is queued at step 0.
 
 If a row has any of columns 7-10, it is imported as a **cold-track** lead with status, step, lastSentAt and account exactly as given, so **Today** shows its follow-up on the real due date (using the gaps from Settings) and the card shows the right step label. Blank cells get sensible defaults, which the preview spells out: a step without a status becomes `active`, `done` without a step means 4, and **Account for rows with none** in the dialog fills a missing account. A `replied` lead lands in *Replies to handle* straight away.
 
 The preview checks every row and shows clear errors you can fix in place (status, step, last sent, account) or skip with the checkbox. Rows with errors are never imported. It also shows each lead's step, last sent date and **next due date**. Rows are rejected when: `step` is not a whole number 0-4; the date is not `YYYY-MM-DD`, not a real calendar date, or in the future; `status` or `account` is not one of the listed values; a `queued` lead has a step or date; an `active` lead has step 0 or 4 or no date; the step is above 0 but there is no account (follow-ups must come from the same account as the first message).
 
 **Log backfill.** For each imported lead the app adds one Log row per message already sent (steps 0 to step-1) with channel `imported`. The latest row carries `lastSentAt`; earlier rows have a blank timestamp. These rows are history only: they never count toward today's daily limits, the *Sent today* list, the progress ring or the streak, even if `lastSentAt` is today. "Contacted" in the Leads tab is computed from the leads themselves, so imported leads count there as soon as they have a step.
+
+### Stats
+
+The **Stats** tab shows two tables, by city and by source: leads, DMs sent (step 1 or more, or no longer queued), replied (a reply date is set), demo sent (demo track), won and lost. Leads without a city or source are grouped as "(no city)" / "(no source)".
 
 ## API
 

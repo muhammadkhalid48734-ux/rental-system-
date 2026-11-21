@@ -131,6 +131,38 @@ export function pipelineStats(leads) {
   return { leads: leads.length, contacted, replied, rate, won };
 }
 
+export const NO_CITY = '(no city)';
+export const NO_SOURCE = '(no source)';
+
+/**
+ * Per-city and per-source outcome counts for the Stats view:
+ *   sent    DM sent (step >= 1, or the status is no longer queued)
+ *   replied repliedAt is set
+ *   demo    demo sent (track is demo)
+ *   won / lost by status
+ * Rows are sorted by DMs sent (most first), then name; leads with an empty value are grouped as "(no city)" or
+ * "(no source)". City names are grouped case-insensitively, shown as first written.
+ */
+export function trackingStats(leads) {
+  const group = (keyOf, empty) => {
+    const map = new Map();
+    for (const l of leads) {
+      const raw = String(keyOf(l) || '').trim();
+      const k = raw ? raw.toLowerCase() : '';
+      if (!map.has(k)) map.set(k, { name: raw || empty, leads: 0, sent: 0, replied: 0, demo: 0, won: 0, lost: 0 });
+      const r = map.get(k);
+      r.leads++;
+      if (l.step >= 1 || l.status !== 'queued') r.sent++;
+      if (l.repliedAt) r.replied++;
+      if (l.track === 'demo') r.demo++;
+      if (l.status === 'won') r.won++;
+      if (l.status === 'lost') r.lost++;
+    }
+    return [...map.values()].sort((a, b) => b.sent - a.sent || a.name.localeCompare(b.name));
+  };
+  return { byCity: group((l) => l.city, NO_CITY), bySource: group((l) => l.source, NO_SOURCE) };
+}
+
 /** Streak (consecutive days with a send; an empty today doesn't break it yet) and 7-day totals. */
 export function weekStats(leads, log, now = new Date()) {
   const sends = netSends(log);

@@ -215,3 +215,52 @@ test('Today has the bulk button, Generate all skips old drafts, the card shows t
   assert.match(batch, /mode === 'old'/);
   assert.match(batch, /needsNewWording/);
 });
+
+// ---------------------------------------------------------------- pitch v3
+
+test('no "shortly" anywhere in the app or the prompts (the validator regex that blocks it is the only mention)', () => {
+  const files = [...srcFiles, ...walk(path.join(root, 'server'))].filter((f) => !f.endsWith(path.join('server', 'validate.js')));
+  for (const f of files) assert.ok(!/shortly/i.test(fs.readFileSync(f, 'utf8')), path.relative(root, f));
+  assert.match(read('server/validate.js'), /shortly/, 'the validator still blocks it');
+});
+
+test('demo and nudge stages: "Copy as email" only with an email on the lead, plus the send-in-DM hint', () => {
+  const card = read('client/src/components/LeadCard.jsx');
+  assert.match(card, /isDemoStage = \['demo', 'nudge1', 'nudge2', 'nudge3'\]\.includes\(stage\?\.key\)/);
+  assert.match(card, /\(!isDemoStage \|\| lead\.email\) && \(/);
+  assert.match(card, /Send demos in DM when you can; owners check Messenger more than email\./);
+});
+
+test('the demo video link can be entered on the card and in the edit dialog', () => {
+  assert.match(read('client/src/components/LeadCard.jsx'), /Demo video \(optional/);
+  assert.match(read('client/src/components/Dialogs.jsx'), /'demoVideo'/);
+});
+
+test('Settings has the plans page link used by the "Go live" quick reply', () => {
+  assert.match(read('client/src/components/Settings.jsx'), /\['siteUrl', 'Plans page link/);
+});
+
+test('city is required when adding a lead; source is editable in the dialog and on the card; warning badges', () => {
+  const dialogs = read('client/src/components/Dialogs.jsx');
+  assert.match(dialogs, /if \(!editing && !String\(f\.city \|\| ''\)\.trim\(\)\) return setErr\('City is required\.'\);/);
+  assert.match(dialogs, /Source \(where you found them\)/);
+  assert.match(dialogs, /city: row\.city, source: row\.source/);
+  const card = read('client/src/components/LeadCard.jsx');
+  assert.match(card, /Source \(where you found them\)/);
+  assert.match(card, /save\('city', city\)/);
+  for (const rel of ['client/src/components/LeadCard.jsx', 'client/src/components/LeadsTab.jsx']) {
+    assert.match(read(rel), /missingTracking\(lead\)\.length > 0/, rel);
+  }
+});
+
+test('Stats tab: in the header, routed in App, simple tables (no charts)', () => {
+  assert.match(read('client/src/components/Header.jsx'), /\['stats', 'Stats', I\.ChartBar\]/);
+  const app = read('client/src/App.jsx');
+  assert.match(app, /'stats'/);
+  assert.match(app, /<Stats leads=\{data\.leads\} \/>/);
+  const stats = read('client/src/components/Stats.jsx');
+  assert.match(stats, /<table className="stats-table">/);
+  assert.match(stats, /By city/);
+  assert.match(stats, /By source/);
+  assert.match(css, /\.tabs \{[^}]*repeat\(5,/);
+});
