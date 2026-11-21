@@ -556,3 +556,18 @@ test('Sheets: new lead columns are backward-compatible (missing cells read as em
   for (const k of LEAD_COLS.slice(oldHeader.length)) assert.equal(lead[k], '', k);
   assert.equal(lead.name, 'Old Co');
 });
+
+test('generate: a yes-reply without the photo/approval line is retried, then falls back to the template that has it', async () => {
+  const { PHOTO_APPROVAL_LINE } = await import('../client/src/lib/messages.js');
+  const missing = 'Hi Dana! Thanks so much for getting back to me. What are your top 3 rentals?';
+  const llm = fakeLlm(missing, missing);
+  const t = await genSetup(llm);
+  try {
+    const r = await gen(t, { kind: 'replyAck' });
+    assert.equal(r.json.source, 'template');
+    assert.equal(llm.calls.length, 2, 'one retry');
+    assert.ok(llm.calls[1].user.includes(`it must say: "${PHOTO_APPROVAL_LINE}"`));
+    assert.ok(r.json.text.includes(PHOTO_APPROVAL_LINE));
+    assert.ok(r.json.text.endsWith('what are your top 3 rentals?'));
+  } finally { await t.close(); }
+});

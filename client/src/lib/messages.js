@@ -168,8 +168,10 @@ export const DEMO_SAMPLE_LINE = 'Only you have this link. Photos and info are sa
 export const demoVideoLine = (url) => `Here's a quick video of how a customer would send you a request: ${url}`;
 
 /** The model's part of the yes-reply (no price). withPriceLine() adds the price line from Config. */
+export const PHOTO_APPROVAL_LINE = "I'll only use photos from your page with your OK, and nothing goes live without your approval.";
+
 export const replyBody = (lead) =>
-  `${greeting(lead)} Thanks so much for getting back to me! I'll only use photos from your page with your OK, and nothing goes live without your approval. To make the demo feel like ${lead.name}, what are your top 3 rentals?`;
+  `${greeting(lead)} Thanks so much for getting back to me! ${PHOTO_APPROVAL_LINE} To make the demo feel like ${lead.name}, what are your top 3 rentals?`;
 
 /** The yes-reply as sent: the price line from Config goes right before the closing question. */
 export const withPriceLine = (text, config) => insertBeforeQuestion(text, priceLine(config));

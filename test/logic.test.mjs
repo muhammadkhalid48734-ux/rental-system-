@@ -498,3 +498,15 @@ test('Stats: per city and per source counts for sent, replied, demo, won, lost',
   assert.equal(byCity.length, 3);
   assert.deepEqual(trackingStats([]), { byCity: [], bySource: [] });
 });
+
+test('yes-reply template always has the photo/approval line and ends with the top-3 question', async () => {
+  const { PHOTO_APPROVAL_LINE } = await import('../client/src/lib/messages.js');
+  for (const owner of ['', 'Sam Rivera']) {
+    for (const c of [cfg, parseConfig({ ...CONFIG_DEFAULTS, foundingOffer: 'true' })]) {
+      const msg = buildMessage({ key: 'reply' }, lead({ owner }), c);
+      assert.ok(msg.includes(PHOTO_APPROVAL_LINE), msg);
+      assert.ok(msg.endsWith('what are your top 3 rentals?'), msg);
+      assert.ok(msg.indexOf(PHOTO_APPROVAL_LINE) < msg.indexOf('Quick heads-up'), 'photo line, then price line, then question');
+    }
+  }
+});

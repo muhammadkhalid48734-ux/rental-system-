@@ -1,4 +1,4 @@
-import { APPROVAL_LINE, DEMO_CLOSING, firstName, PROMPT_VERSION } from '../client/src/lib/messages.js';
+import { APPROVAL_LINE, DEMO_CLOSING, firstName, PHOTO_APPROVAL_LINE, PROMPT_VERSION } from '../client/src/lib/messages.js';
 
 export const KINDS = [
   'cold', 'followup1', 'followup2', 'followup3',
@@ -19,7 +19,7 @@ const SYSTEM_PROMPT = `You write ONE short Instagram/Facebook DM from a small re
 - In every message: no price, no link, no website address, no mention of automation, follow-up systems, review systems or monthly plans, and no promise about when or how fast anything will arrive (no "today", "soon", "within the hour", "next morning", "24 hours", "same day", "in 30 minutes" or anything similar).
 - Vary structure and phrasing between leads: different opening, order and length. Never reuse phrasing from the earlier messages sent to this lead or from previousVariants.
 - Follow-up 1 is a short bump in case your message got buried: you are still happy to make a free demo, no pressure, and it ends with a question. Follow-up 2 gives one new reason: many parents search Google before they message anyone, and a simple site with their rentals and a request form helps parents find them and send their date and item, while the owner still approves every request; it ends with the question "Want to see a free demo?". Follow-up 3 is a polite last note with no pitch.
-- The yes-reply (after they say yes) thanks them, says you will only use photos from their page with their OK and that nothing goes live without their approval, and ends with a question asking for their top 3 rentals. Never write a price in it: the server adds a fixed line about pricing.
+- The yes-reply (after they say yes) thanks them, always says "${PHOTO_APPROVAL_LINE}" (that idea must be in every version), and ends with a question asking for their top 3 rentals. Never write a price in it: the server adds a fixed line about pricing.
 - Demo delivery message: the demo is ready at the link, only they have this link, the photos and info are samples for now, and it ends with exactly: ${DEMO_CLOSING} No prices in it.
 - Demo nudges: 1) did the demo open okay on their phone, and which rental do people ask about most so you can put it first; 2) anything they would change, you can swap photos, items, prices or colors, whatever makes it feel like theirs; 3) the last one: no pressure, should you keep their demo saved for spring or close it out, either answer is fine.
 - Output only the message text.
@@ -63,7 +63,7 @@ const KIND_INSTRUCTIONS = {
   followup1: `Write follow-up 1 (under 45 words): a short bump in case your message got buried, still happy to make a free demo, no pressure. End with a question. ${NO_PROMISE}`,
   followup2: `Write follow-up 2 (under 60 words): give ONE new reason, in your own words: many parents search Google before they message anyone, and a simple site with their rentals and a request form helps parents find them and send their date and item, and they still approve every request. End with the question "Want to see a free demo?". ${NO_PROMISE}`,
   followup3: `Write follow-up 3, the last one (under 45 words): a polite last note with no pitch and no offer, leaving the door open. ${NO_PROMISE}`,
-  replyAck: `They said yes. Write the yes-reply (under 60 words): thank them, say you will only use photos from their page with their OK and that nothing goes live without their approval, and END with a question asking for their top 3 rentals. Do not write any price, plan or dollar amount: the server adds a fixed pricing line before your question. ${NO_PROMISE}`,
+  replyAck: `They said yes. Write the yes-reply (under 60 words): thank them, ALWAYS include this idea (these words or very close to them): "${PHOTO_APPROVAL_LINE}", and END with a question asking for their top 3 rentals. Do not write any price, plan or dollar amount: the server adds a fixed pricing line before your question. ${NO_PROMISE}`,
   demo: `Write the demo-delivery message (under 70 words). Thank them, say the demo is ready at ${LINK_TOKEN}, that only they have this link, and that the photos and info are samples for now. Do not write any other link (the server adds the video link itself), and no price or dollar amount. End with exactly: ${DEMO_CLOSING}`,
   demoNudge1: 'Write demo nudge 1 (under 40 words): ask if the demo opened okay on their phone, and ask which rental people ask about most so you can put it first. Do not include the link or any price.',
   demoNudge2: 'Write demo nudge 2 (under 45 words): ask if there is anything they would change, and offer to swap photos, items, prices or colors, whatever makes it feel like theirs. Do not include the link or any price.',

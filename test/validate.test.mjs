@@ -204,3 +204,29 @@ test('cleanOutput strips wrapping quotes and a "Message:" label', () => {
   assert.equal(cleanOutput('Message: Hi there!'), 'Hi there!');
   assert.equal(cleanOutput('  Hi there!  '), 'Hi there!');
 });
+
+test('yes-reply must always carry the photos-with-your-OK / nothing-goes-live-without-approval idea', async () => {
+  const { PHOTO_APPROVAL_LINE } = await import('../client/src/lib/messages.js');
+  assert.equal(PHOTO_APPROVAL_LINE, "I'll only use photos from your page with your OK, and nothing goes live without your approval.");
+  assert.ok(GOOD_REPLY.includes(PHOTO_APPROVAL_LINE));
+  assert.deepEqual(check('replyAck', GOOD_REPLY), []);
+  // small wording changes keep the idea and pass
+  for (const ok of [
+    "I'll only use photos from your page with your okay, and nothing will go live without your approval.",
+    'I will only use your page photos with your permission, and nothing goes live until you approve it.',
+  ]) assert.deepEqual(check('replyAck', GOOD_REPLY.replace(PHOTO_APPROVAL_LINE, ok)), [], ok);
+  // either half missing is rejected
+  for (const bad of [
+    '',
+    "I'll only use photos from your page with your OK.",
+    'Nothing goes live without your approval.',
+    "I'll use a few photos from your page, and nothing goes live without your approval.",
+  ]) {
+    const text = GOOD_REPLY.replace(PHOTO_APPROVAL_LINE, bad).replace(/\s+/g, ' ');
+    assert.ok(has(check('replyAck', text), /only use photos from your page with your OK, and nothing goes live without your approval/), `should fail: "${bad}"`);
+  }
+  // after the price line is added it still ends with the top-3 question and still has the line
+  const out = finalize('replyAck', GOOD_REPLY, CONFIG_DEFAULTS);
+  assert.ok(out.includes(PHOTO_APPROVAL_LINE));
+  assert.ok(out.endsWith('What are your top 3 rentals?'));
+});

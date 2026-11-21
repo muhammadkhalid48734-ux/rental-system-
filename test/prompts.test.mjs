@@ -151,3 +151,12 @@ test('the prompt version is a positive integer shared with the client', async ()
   assert.equal(PROMPT_VERSION, 3);
   assert.equal(PROMPT_VERSION, msg.PROMPT_VERSION);
 });
+
+test('yes-reply instructions (system prompt and task) always ask for the photo/approval line', async () => {
+  const { PHOTO_APPROVAL_LINE } = await import('../client/src/lib/messages.js');
+  assert.ok(SYSTEM_PROMPT.includes(`always says "${PHOTO_APPROVAL_LINE}"`));
+  const task = buildUserPrompt({ kind: 'replyAck', lead }).match(/Task: ([^\n]*)/)[1];
+  assert.ok(task.includes(PHOTO_APPROVAL_LINE));
+  assert.match(task, /ALWAYS include this idea/);
+  assert.match(task, /END with a question asking for their top 3 rentals/);
+});

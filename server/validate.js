@@ -1,4 +1,6 @@
-import { allowedAmounts, DEMO_CLOSING, demoVideoLine, priceLine, withPriceLine } from '../client/src/lib/messages.js';
+import {
+  allowedAmounts, DEMO_CLOSING, demoVideoLine, PHOTO_APPROVAL_LINE, priceLine, withPriceLine,
+} from '../client/src/lib/messages.js';
 import { LINK_TOKEN } from './prompts.js';
 
 const URL_RE = /\bhttps?:\/\/|\bwww\.|\b[a-z0-9][a-z0-9-]*\.(?:com|net|org|io|co|us|app|site|biz|info|shop|online|store)\b/i;
@@ -140,6 +142,13 @@ export function validateDraft(kind, text, { lead } = {}) {
   }
 
   if (kind === 'replyAck') {
+    // "I'll only use photos from your page with your OK, and nothing goes live without your approval."
+    // Both halves are required; small wording changes are allowed.
+    const photosWithOk = /\bonly\b[^.!?]*\bphotos?\b[^.!?]*\b(?:ok|okay|permission|approval|go-ahead)\b/i.test(t);
+    const nothingLive = /\bnothing\b[^.!?]*\b(?:goes|go|will go)\s+live\b[^.!?]*\b(?:without|until)\b[^.!?]*\b(?:approval|ok|okay|approve|say so)\b/i.test(t);
+    if (!photosWithOk || !nothingLive) {
+      v.push(`it must say: "${PHOTO_APPROVAL_LINE}"`);
+    }
     if (!/\btop\s*(?:3|three)\b/i.test(t)) v.push('it must ask for their top 3 rentals');
     if (!endsWithQuestion(t)) v.push('it must end with a question');
   }
