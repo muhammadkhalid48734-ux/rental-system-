@@ -230,3 +230,10 @@ test('yes-reply must always carry the photos-with-your-OK / nothing-goes-live-wi
   assert.ok(out.includes(PHOTO_APPROVAL_LINE));
   assert.ok(out.endsWith('What are your top 3 rentals?'));
 });
+
+test('first DM: "noticed" may appear only once (use "saw" for the hook)', () => {
+  const twice = GOOD_FIRST.replace('When I pulled up your site on my phone,', 'I noticed that on a phone');
+  assert.ok(has(check('cold', twice), /"noticed" more than once/));
+  assert.deepEqual(check('cold', twice.replace('and noticed your sparkle-theme castle', 'and saw your sparkle-theme castle')), []);
+  assert.deepEqual(check('cold', GOOD_FIRST), []);
+});

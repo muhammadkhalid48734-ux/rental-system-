@@ -160,3 +160,7 @@ test('yes-reply instructions (system prompt and task) always ask for the photo/a
   assert.match(task, /ALWAYS include this idea/);
   assert.match(task, /END with a question asking for their top 3 rentals/);
 });
+
+test('first-message rules say "noticed" at most once and offer "and saw {hook}"', () => {
+  assert.ok(SYSTEM_PROMPT.includes('use the word "noticed" at most once in the whole message, so write "and saw {hook}" when your problem sentence says "I noticed"'));
+});

@@ -32,11 +32,31 @@ test('pitch: greeting, hook fallback, no link, no price, no timing, honest wordi
   assert.match(withOwner, /I came across Bounce Co and noticed your castle lineup\. /);
 });
 
+test('"noticed" appears at most once in any first message; the hook says "saw" when the problem says "I noticed"', () => {
+  for (const problem of ['outdated', 'down', 'parked', 'nosite', 'social']) {
+    for (const hook of ['', 'your castle lineup', 'your handmade balloon garlands that match every theme']) {
+      const l = lead({ problem, hook, owner: 'Sam', site: problem === 'nosite' ? '' : 'https://sunnydaybounce.example' });
+      const msg = buildMessage({ key: 'pitch' }, l, cfg);
+      assert.ok((msg.match(/\bnoticed\b/gi) || []).length <= 1, `${problem}/${hook}: ${msg}`);
+      assert.ok((msg.match(/\bI noticed\b/g) || []).length <= 1, `${problem}/${hook}`);
+      assert.deepEqual(validateDraft('cold', msg, { lead: l }).filter((x) => !/already exists/.test(x)), [], `${problem}/${hook}`);
+    }
+  }
+  const nosite = buildMessage({ key: 'pitch' }, lead({ problem: 'nosite', hook: 'your castle lineup', site: '' }), cfg);
+  assert.match(nosite, /I came across Bounce Co and saw your castle lineup\. I noticed you don't have a website yet/);
+  const outdated = buildMessage({ key: 'pitch' }, lead({ problem: 'outdated', hook: 'your castle lineup' }), cfg);
+  assert.match(outdated, /I came across Bounce Co and noticed your castle lineup\./);
+});
+
 test('problem sentences', () => {
   const m = (problem, site) => buildMessage(getStage(lead({ problem, site })), lead({ problem, site }), cfg);
   assert.match(m('down', 'https://www.bounce.com/x'), /I tried opening bounce\.com and it wasn't loading/);
   assert.match(m('parked', ''), /'get this domain' page/);
-  assert.match(m('nosite', ''), /don't have a website yet/);
+  assert.equal(
+    m('nosite', '').split('\n\n')[1].replace(/^I came across Bounce Co and like what you offer\. /, ''),
+    "I noticed you don't have a website yet, so parents have to message you to see your rentals or ask about dates.",
+  );
+  assert.doesNotMatch(m('nosite', ''), /google|searching|can't find you/i, 'no Google claim in the nosite pitch');
   assert.match(m('social', ''), /slide down the feed/);
   assert.equal(
     m('outdated', 'x.com').split('\n\n')[1].replace(/^I came across Bounce Co and like what you offer\. /, ''),
@@ -312,7 +332,8 @@ test('quick replies: the new set, in order, with the exact wording that was aske
   assert.match(by['How do reviews work?'].text, /never pay for reviews/);
   assert.match(by['How does double-booking protection work?'].text, /blocked when you confirm a booking or when the deposit arrives/);
   assert.match(by['How does double-booking protection work?'].text, /Pending requests don't block/);
-  assert.match(by['How does double-booking protection work?'].text, /24-hour hold/);
+  assert.equal(by['How does double-booking protection work?'].text, "A date is blocked when you confirm a booking or when the deposit arrives. Pending requests don't block the date, so a request that never turns into a booking can't lock you out.");
+  assert.doesNotMatch(by['How does double-booking protection work?'].text, /24|hold/i, 'no optional 24-hour hold');
   assert.match(by['What if I stop?'].text, /site files/);
   assert.match(by['What if I stop?'].text, /domain, photos and text stay yours/);
   const founding = quickReplies({ ...cfg, foundingOffer: 'true' }).find((x) => x.title === 'How much?').parts[2].text;
@@ -330,8 +351,8 @@ test('no template and no quick reply contains the old delivery-time wording or a
   for (const t of texts) {
     assert.doesNotMatch(t, /support hours|saying yes|next morning|within the hour|US time|shortly/i);
   }
-  // every outgoing template is free of timing promises (the double-booking reply describes a 24-hour hold feature)
-  for (const t of texts.filter((x) => !/24-hour hold/.test(x))) assert.equal(hasDeliveryPromise(t), false, t);
+  // every outgoing template and quick reply is free of timing promises
+  for (const t of texts) assert.equal(hasDeliveryPromise(t), false, t);
   // the offline templates satisfy our own validator, so an offline message is as safe as a generated one
   const kinds = { pitch: 'cold', fu1: 'followup1', fu2: 'followup2', fu3: 'followup3', nudge1: 'demoNudge1', nudge2: 'demoNudge2', nudge3: 'demoNudge3' };
   for (const [key, kind] of Object.entries(kinds)) {

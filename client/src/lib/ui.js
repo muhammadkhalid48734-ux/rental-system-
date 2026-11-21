@@ -43,4 +43,4 @@ export const HOOK_LABEL = 'Hook: one true detail you saw on their page';
 export const HOOK_PLACEHOLDER = 'e.g. the blue and yellow castle photos';
 export const NOTE_LABEL = 'Note: internal facts about the problem';
 export const NOTE_HELP = 'Only you and the AI see this. It never appears in the message word for word.';
-export const HOOK_HELP = 'Appears in the message: "I came across … and noticed …".';
+export const HOOK_HELP = 'Appears in the message: "I came across … and noticed …" (or "and saw …").';

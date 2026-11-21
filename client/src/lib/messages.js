@@ -143,7 +143,7 @@ const problemSentence = (lead) => {
     case 'parked':
       return "Your website link currently lands on a 'get this domain' page, so anyone clicking it hits a dead end instead of your rentals.";
     case 'nosite':
-      return "I noticed you don't have a website yet, so parents searching on Google can't find you or browse your rentals.";
+      return "I noticed you don't have a website yet, so parents have to message you to see your rentals or ask about dates.";
     case 'social':
       return "Your posts look great, but without a website they slide down the feed, and parents can't see your full lineup in one place.";
     case 'outdated':
@@ -152,9 +152,11 @@ const problemSentence = (lead) => {
   }
 };
 
-const hookLine = (lead) => {
+/** "noticed" may appear only once in a first message: the hook says "saw" when the problem sentence already says "I noticed". */
+const hookLine = (lead, problem = '') => {
   const hook = String(lead.hook || '').trim().replace(/[.!\s]+$/, '');
-  return hook ? `I came across ${lead.name} and noticed ${hook}.` : `I came across ${lead.name} and like what you offer.`;
+  const verb = /\bnoticed\b/i.test(problem) ? 'saw' : 'noticed';
+  return hook ? `I came across ${lead.name} and ${verb} ${hook}.` : `I came across ${lead.name} and like what you offer.`;
 };
 
 export const APPROVAL_LINE = 'Nothing gets booked without you, you approve every request.';
@@ -180,8 +182,10 @@ export const withPriceLine = (text, config) => insertBeforeQuestion(text, priceL
 export function buildMessage(stage, lead, config = {}) {
   const hi = greeting(lead);
   switch (stage.key) {
-    case 'pitch':
-      return `${hi}\n\n${hookLine(lead)} ${problemSentence(lead)}\n\n${pitchTail()}`;
+    case 'pitch': {
+      const problem = problemSentence(lead);
+      return `${hi}\n\n${hookLine(lead, problem)} ${problem}\n\n${pitchTail()}`;
+    }
     case 'fu1':
       return `${hi} Just bumping this in case it got buried. I'm still happy to make a free demo for ${lead.name}, no pressure at all. Want me to put one together?`;
     case 'fu2':
@@ -389,7 +393,7 @@ export function quickReplies(config) {
     },
     {
       title: 'How does double-booking protection work?',
-      text: "A date is blocked when you confirm a booking or when the deposit arrives. Pending requests don't block the date, so a request that never turns into a booking can't lock you out. If you prefer, you can set a 24-hour hold so a pending request holds the date for 24 hours.",
+      text: "A date is blocked when you confirm a booking or when the deposit arrives. Pending requests don't block the date, so a request that never turns into a booking can't lock you out.",
     },
     {
       title: 'What if I stop?',

@@ -134,6 +134,7 @@ export function validateDraft(kind, text, { lead } = {}) {
     if (!n.includes('free demo')) v.push('it must offer a "free demo"');
     if (!n.includes('no obligation')) v.push('it must say "No obligation"');
     if (!/\bapprov\w*/i.test(t)) v.push('it must say nothing gets booked without them: they approve every request');
+    if ((t.match(/\bnoticed\b/gi) || []).length > 1) v.push('it says "noticed" more than once; use "I came across … and saw …" for the hook');
     if (!endsWithQuestion(t)) v.push('it must end with a question');
     const need = hookWords(lead?.hook);
     if (need.length && need.filter((w) => n.includes(w)).length < Math.ceil(need.length / 2)) {
